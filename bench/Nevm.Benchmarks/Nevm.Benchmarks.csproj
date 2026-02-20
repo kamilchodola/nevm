@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Nullable>annotations</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Nethermind.Core/Nethermind.Core.csproj" />
+    <ProjectReference Include="../../src/Nethermind.Crypto/Nethermind.Crypto.csproj" />
+    <ProjectReference Include="../../src/Nethermind.Db/Nethermind.Db.csproj" />
+    <ProjectReference Include="../../src/Nethermind.Evm/Nethermind.Evm.csproj" />
+    <ProjectReference Include="../../src/Nethermind.Evm.Precompiles/Nethermind.Evm.Precompiles.csproj" />
+    <ProjectReference Include="../../src/Nethermind.Specs/Nethermind.Specs.csproj" />
+    <ProjectReference Include="../../src/Nethermind.State/Nethermind.State.csproj" />
+    <ProjectReference Include="../../src/Nethermind.Trie/Nethermind.Trie.csproj" />
+    <ProjectReference Include="../../test/Nevm.TestHelpers/Nevm.TestHelpers.csproj" />
+  </ItemGroup>
+
+</Project>
