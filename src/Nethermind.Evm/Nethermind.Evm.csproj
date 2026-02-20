@@ -5,9 +5,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
-    <ProjectReference Include="..\Nethermind.Crypto\Nethermind.Crypto.csproj" />
-    <ProjectReference Include="..\Nethermind.Serialization.Rlp\Nethermind.Serialization.Rlp.csproj" />
-    <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj" />
+    <ProjectReference Include="$(NevmDepsRoot)Nethermind.Core/Nethermind.Core.csproj" />
+    <ProjectReference Include="$(NevmDepsRoot)Nethermind.Crypto/Nethermind.Crypto.csproj" />
+    <ProjectReference Include="$(NevmDepsRoot)Nethermind.Serialization.Rlp/Nethermind.Serialization.Rlp.csproj" />
+    <ProjectReference Include="$(NevmDepsRoot)Nethermind.Specs/Nethermind.Specs.csproj" />
   </ItemGroup>
 </Project>

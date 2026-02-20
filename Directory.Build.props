@@ -1,5 +1,12 @@
 <Project>
 
+  <!-- When used as a submodule, chain to the host repo's Directory.Build.props
+       which can set NevmDepsRoot to point at the host's shared projects. -->
+  <PropertyGroup>
+    <_NevmParentProps>$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))</_NevmParentProps>
+  </PropertyGroup>
+  <Import Project="$(_NevmParentProps)" Condition="'$(_NevmParentProps)' != ''" />
+
   <PropertyGroup>
     <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
