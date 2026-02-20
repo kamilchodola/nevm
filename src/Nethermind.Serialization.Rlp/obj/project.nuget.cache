@@ -1,0 +1,17 @@
+{
+  "version": 2,
+  "dgSpecHash": "dUA2itOMyUc=",
+  "success": false,
+  "projectFilePath": "C:\\Users\\kamil\\source\\repos\\nethermind\\src\\Nethermind\\Nethermind.Serialization.Rlp\\Nethermind.Serialization.Rlp.csproj",
+  "expectedPackageFiles": [],
+  "logs": [
+    {
+      "code": "NU1105",
+      "level": "Error",
+      "message": "Unable to read project information for 'Nethermind.Serialization.Rlp': Invalid framework identifier ''.",
+      "projectPath": "C:\\Users\\kamil\\source\\repos\\nethermind\\src\\Nethermind\\Nethermind.Serialization.Rlp\\Nethermind.Serialization.Rlp.csproj",
+      "filePath": "C:\\Users\\kamil\\source\\repos\\nethermind\\src\\Nethermind\\Nethermind.Serialization.Rlp\\Nethermind.Serialization.Rlp.csproj",
+      "targetGraphs": []
+    }
+  ]
+}

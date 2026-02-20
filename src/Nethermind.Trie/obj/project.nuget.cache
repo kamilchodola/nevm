@@ -1,0 +1,17 @@
+{
+  "version": 2,
+  "dgSpecHash": "wT6UIFFKmUA=",
+  "success": false,
+  "projectFilePath": "C:\\Users\\kamil\\source\\repos\\nethermind\\src\\Nethermind\\Nethermind.Trie\\Nethermind.Trie.csproj",
+  "expectedPackageFiles": [],
+  "logs": [
+    {
+      "code": "NU1105",
+      "level": "Error",
+      "message": "Unable to read project information for 'Nethermind.Trie': Invalid framework identifier ''.",
+      "projectPath": "C:\\Users\\kamil\\source\\repos\\nethermind\\src\\Nethermind\\Nethermind.Trie\\Nethermind.Trie.csproj",
+      "filePath": "C:\\Users\\kamil\\source\\repos\\nethermind\\src\\Nethermind\\Nethermind.Trie\\Nethermind.Trie.csproj",
+      "targetGraphs": []
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Core dependencies -->
+    <PackageVersion Include="Autofac" Version="9.0.0" />
+    <PackageVersion Include="Autofac.Extensions.DependencyInjection" Version="10.0.0" />
+    <PackageVersion Include="FastEnum" Version="2.0.6" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.3" />
+    <PackageVersion Include="Microsoft.Extensions.ObjectPool" Version="10.0.3" />
+    <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="10.0.3" />
+    <PackageVersion Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.15.0" />
+    <PackageVersion Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.1" />
+    <PackageVersion Include="Nethermind.Numerics.Int256" Version="1.4.0" />
+    <PackageVersion Include="NonBlocking" Version="2.1.2" />
+    <PackageVersion Include="TestableIO.System.IO.Abstractions.Wrappers" Version="22.1.0" />
+
+    <!-- Crypto dependencies -->
+    <PackageVersion Include="BouncyCastle.Cryptography" Version="2.6.2" />
+    <PackageVersion Include="Ckzg.Bindings" Version="2.1.5.1551" />
+    <PackageVersion Include="Microsoft.AspNetCore.DataProtection" Version="10.0.3" />
+    <PackageVersion Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="10.0.3" />
+    <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="10.0.3" />
+    <PackageVersion Include="Nethermind.Crypto.Bls" Version="1.0.5" />
+    <PackageVersion Include="Nethermind.Crypto.SecP256k1" Version="1.5.0" />
+
+    <!-- Precompile dependencies -->
+    <PackageVersion Include="Nethermind.Crypto.SecP256r1" Version="1.0.0-preview.6" />
+    <PackageVersion Include="Nethermind.GmpBindings" Version="1.0.3" />
+    <PackageVersion Include="Nethermind.MclBindings" Version="1.0.5" />
+
+    <!-- Serialization -->
+    <PackageVersion Include="Nethermind.DotNetty.Buffers" Version="1.0.2.76" />
+    <PackageVersion Include="Microsoft.ClearScript.V8" Version="7.5.0" />
+    <PackageVersion Include="ZstdSharp.Port" Version="0.8.7" />
+
+    <!-- Config -->
+    <PackageVersion Include="PierTwo.Lantern.Discv5.WireProtocol" Version="1.0.0-preview.7" />
+    <PackageVersion Include="System.Configuration.ConfigurationManager" Version="10.0.3" />
+
+    <!-- Db/Trie -->
+    <PackageVersion Include="Nethermind.TurboPForBindings" Version="1.0.0" />
+
+    <!-- Math -->
+    <PackageVersion Include="MathNet.Numerics.FSharp" Version="5.0.0" />
+
+    <!-- Test dependencies -->
+    <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
+    <PackageVersion Include="FluentAssertions" Version="[7.2.0]" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
+    <PackageVersion Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.4.1" />
+    <PackageVersion Include="NSubstitute" Version="5.3.0" />
+    <PackageVersion Include="NUnit" Version="4.4.0" />
+    <PackageVersion Include="NUnit.Analyzers" Version="4.11.2" />
+    <PackageVersion Include="NUnit3TestAdapter" Version="6.1.0" />
+    <PackageVersion Include="TestableIO.System.IO.Abstractions.TestingHelpers" Version="22.1.0" />
+    <PackageVersion Include="Microsoft.ClearScript.V8.Native.linux-arm64" Version="7.5.0" />
+    <PackageVersion Include="Microsoft.ClearScript.V8.Native.linux-x64" Version="7.5.0" />
+    <PackageVersion Include="Microsoft.ClearScript.V8.Native.osx-arm64" Version="7.5.0" />
+    <PackageVersion Include="Microsoft.ClearScript.V8.Native.osx-x64" Version="7.5.0" />
+    <PackageVersion Include="Microsoft.ClearScript.V8.Native.win-x64" Version="7.5.0" />
+  </ItemGroup>
+</Project>

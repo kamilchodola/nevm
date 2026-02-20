@@ -1,0 +1,80 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="../../src/tests.props" />
+
+  <PropertyGroup>
+    <Nullable>annotations</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="MathNet.Numerics.FSharp" />
+    <PackageReference Include="NSubstitute" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Nevm.TestHelpers/Nevm.TestHelpers.csproj" />
+    <ProjectReference Include="../../src/Nethermind.Core/Nethermind.Core.csproj" />
+    <ProjectReference Include="../../src/Nethermind.Evm/Nethermind.Evm.csproj" />
+    <ProjectReference Include="../../src/Nethermind.Evm.Precompiles/Nethermind.Evm.Precompiles.csproj" />
+    <ProjectReference Include="../../src/Nethermind.Specs/Nethermind.Specs.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Update="PrecompileVectors\Bls\add_G1_bls.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="PrecompileVectors\Bls\add_G2_bls.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="PrecompileVectors\Bls\fail-add_G1_bls.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="PrecompileVectors\Bls\fail-add_G2_bls.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="PrecompileVectors\Bls\fail-map_fp_to_G1_bls.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="PrecompileVectors\Bls\fail-map_fp2_to_G2_bls.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="PrecompileVectors\Bls\fail-mul_G1_bls.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="PrecompileVectors\Bls\fail-mul_G2_bls.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="PrecompileVectors\Bls\fail-multiexp_G1_bls.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="PrecompileVectors\Bls\fail-multiexp_G2_bls.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="PrecompileVectors\Bls\fail-pairing_check_bls.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="PrecompileVectors\Bls\map_fp_to_G1_bls.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="PrecompileVectors\Bls\map_fp2_to_G2_bls.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="PrecompileVectors\Bls\mul_G1_bls.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="PrecompileVectors\Bls\mul_G2_bls.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="PrecompileVectors\Bls\multiexp_G1_bls.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="PrecompileVectors\Bls\multiexp_G2_bls.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="PrecompileVectors\Bls\pairing_check_bls.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="PrecompileVectors\p256Verify.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+</Project>

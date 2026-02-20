@@ -1,0 +1,17 @@
+{
+  "version": 2,
+  "dgSpecHash": "RhuNWjqMLPI=",
+  "success": false,
+  "projectFilePath": "C:\\Users\\kamil\\source\\repos\\nethermind\\src\\Nethermind\\Nethermind.Logging\\Nethermind.Logging.csproj",
+  "expectedPackageFiles": [],
+  "logs": [
+    {
+      "code": "NU1105",
+      "level": "Error",
+      "message": "Unable to read project information for 'Nethermind.Logging': Invalid framework identifier ''.",
+      "projectPath": "C:\\Users\\kamil\\source\\repos\\nethermind\\src\\Nethermind\\Nethermind.Logging\\Nethermind.Logging.csproj",
+      "filePath": "C:\\Users\\kamil\\source\\repos\\nethermind\\src\\Nethermind\\Nethermind.Logging\\Nethermind.Logging.csproj",
+      "targetGraphs": []
+    }
+  ]
+}

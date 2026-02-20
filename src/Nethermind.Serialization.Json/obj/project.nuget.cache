@@ -1,0 +1,17 @@
+{
+  "version": 2,
+  "dgSpecHash": "1crU5vnJc3E=",
+  "success": false,
+  "projectFilePath": "C:\\Users\\kamil\\source\\repos\\nethermind\\src\\Nethermind\\Nethermind.Serialization.Json\\Nethermind.Serialization.Json.csproj",
+  "expectedPackageFiles": [],
+  "logs": [
+    {
+      "code": "NU1105",
+      "level": "Error",
+      "message": "Unable to read project information for 'Nethermind.Serialization.Json': Invalid framework identifier ''.",
+      "projectPath": "C:\\Users\\kamil\\source\\repos\\nethermind\\src\\Nethermind\\Nethermind.Serialization.Json\\Nethermind.Serialization.Json.csproj",
+      "filePath": "C:\\Users\\kamil\\source\\repos\\nethermind\\src\\Nethermind\\Nethermind.Serialization.Json\\Nethermind.Serialization.Json.csproj",
+      "targetGraphs": []
+    }
+  ]
+}

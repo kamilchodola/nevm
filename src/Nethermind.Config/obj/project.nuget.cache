@@ -1,0 +1,17 @@
+{
+  "version": 2,
+  "dgSpecHash": "I/sM5Zj8Amc=",
+  "success": false,
+  "projectFilePath": "C:\\Users\\kamil\\source\\repos\\nethermind\\src\\Nethermind\\Nethermind.Config\\Nethermind.Config.csproj",
+  "expectedPackageFiles": [],
+  "logs": [
+    {
+      "code": "NU1105",
+      "level": "Error",
+      "message": "Unable to read project information for 'Nethermind.Config': Invalid framework identifier ''.",
+      "projectPath": "C:\\Users\\kamil\\source\\repos\\nethermind\\src\\Nethermind\\Nethermind.Config\\Nethermind.Config.csproj",
+      "filePath": "C:\\Users\\kamil\\source\\repos\\nethermind\\src\\Nethermind\\Nethermind.Config\\Nethermind.Config.csproj",
+      "targetGraphs": []
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "version": 2,
+  "dgSpecHash": "P2M2sXnu024=",
+  "success": false,
+  "projectFilePath": "C:\\Users\\kamil\\source\\repos\\nethermind\\src\\Nethermind\\Nethermind.Evm\\Nethermind.Evm.csproj",
+  "expectedPackageFiles": [],
+  "logs": [
+    {
+      "code": "NU1105",
+      "level": "Error",
+      "message": "Unable to read project information for 'Nethermind.Evm': Invalid framework identifier ''.",
+      "projectPath": "C:\\Users\\kamil\\source\\repos\\nethermind\\src\\Nethermind\\Nethermind.Evm\\Nethermind.Evm.csproj",
+      "filePath": "C:\\Users\\kamil\\source\\repos\\nethermind\\src\\Nethermind\\Nethermind.Evm\\Nethermind.Evm.csproj",
+      "targetGraphs": []
+    }
+  ]
+}

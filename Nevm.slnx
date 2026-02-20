@@ -1,0 +1,23 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Nethermind.Logging/Nethermind.Logging.csproj" />
+    <Project Path="src/Nethermind.Core/Nethermind.Core.csproj" />
+    <Project Path="src/Nethermind.Config/Nethermind.Config.csproj" />
+    <Project Path="src/Nethermind.Serialization.Rlp/Nethermind.Serialization.Rlp.csproj" />
+    <Project Path="src/Nethermind.Serialization.Json/Nethermind.Serialization.Json.csproj" />
+    <Project Path="src/Nethermind.Crypto/Nethermind.Crypto.csproj" />
+    <Project Path="src/Nethermind.Specs/Nethermind.Specs.csproj" />
+    <Project Path="src/Nethermind.Evm/Nethermind.Evm.csproj" />
+    <Project Path="src/Nethermind.Evm.Precompiles/Nethermind.Evm.Precompiles.csproj" />
+    <Project Path="src/Nethermind.Db/Nethermind.Db.csproj" />
+    <Project Path="src/Nethermind.Trie/Nethermind.Trie.csproj" />
+    <Project Path="src/Nethermind.State/Nethermind.State.csproj" />
+  </Folder>
+  <Folder Name="/test/">
+    <Project Path="test/Nevm.TestHelpers/Nevm.TestHelpers.csproj" />
+    <Project Path="test/Nethermind.Evm.Test/Nethermind.Evm.Test.csproj" />
+  </Folder>
+  <Folder Name="/bench/">
+    <Project Path="bench/Nevm.Benchmarks/Nevm.Benchmarks.csproj" />
+  </Folder>
+</Solution>
