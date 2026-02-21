@@ -7,10 +7,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="BenchmarkDotNet" />
-  </ItemGroup>
-
-  <ItemGroup>
     <ProjectReference Include="../../src/Nethermind.Core/Nethermind.Core.csproj" />
     <ProjectReference Include="../../src/Nethermind.Crypto/Nethermind.Crypto.csproj" />
     <ProjectReference Include="../../src/Nethermind.Db/Nethermind.Db.csproj" />
@@ -20,10 +16,6 @@
     <ProjectReference Include="../../src/Nethermind.State/Nethermind.State.csproj" />
     <ProjectReference Include="../../src/Nethermind.Trie/Nethermind.Trie.csproj" />
     <ProjectReference Include="../../test/Nevm.TestHelpers/Nevm.TestHelpers.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <EmbeddedResource Include="testdata\*.hex" />
   </ItemGroup>
 
 </Project>

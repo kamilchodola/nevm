@@ -760,7 +760,7 @@ internal static partial class EvmInstructions
             stateForAccessLists: in vm.VmState.AccessTracker,
             snapshot: in snapshot);
 
-        return EvmExceptionType.None;
+        return EvmExceptionType.DataReturn;
     // Jump forward to be unpredicted by the branch predictor.
     StaticCallViolation:
         return EvmExceptionType.StaticCallViolation;
@@ -814,7 +814,7 @@ internal static partial class EvmInstructions
 
         vm.ReturnData = deployCodeInfo;
 
-        return EvmExceptionType.None;
+        return EvmExceptionType.DataReturn;
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
@@ -837,7 +837,7 @@ internal static partial class EvmInstructions
         if (!spec.IsEofEnabled || codeInfo.Version == 0)
             goto BadInstruction;
 
-        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
+        // Static gas is pre-deducted by the dispatch loop.
 
         if (!stack.PopUInt256(out UInt256 offset))
             goto StackUnderflow;
@@ -1023,7 +1023,7 @@ internal static partial class EvmInstructions
             stateForAccessLists: in vm.VmState.AccessTracker,
             snapshot: in snapshot);
 
-        return EvmExceptionType.None;
+        return EvmExceptionType.DataReturn;
     // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;

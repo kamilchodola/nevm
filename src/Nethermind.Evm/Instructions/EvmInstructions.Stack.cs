@@ -32,8 +32,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionPop<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        // Deduct the minimal gas cost for a POP operation.
-        TGasPolicy.Consume(ref gas, GasCostOf.Base);
+        // Static gas is pre-deducted by the dispatch loop.
         // Pop from the stack; if nothing to pop, signal a stack underflow.
         return stack.PopLimbo() ? EvmExceptionType.None : EvmExceptionType.StackUnderflow;
     }
@@ -121,8 +120,7 @@ internal static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         const int Size = sizeof(ushort);
-        // Deduct a very low gas cost for the push operation.
-        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
+        // Static gas for PUSH2 is pre-deducted by the dispatch loop.
         // Retrieve the code segment containing immediate data.
         ReadOnlySpan<byte> code = vm.VmState.Env.CodeInfo.CodeSpan;
 
@@ -493,7 +491,7 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        TGasPolicy.Consume(ref gas, GasCostOf.Base);
+        // Static gas is pre-deducted by the dispatch loop.
         stack.PushZero<TTracingInst>();
         return EvmExceptionType.None;
     }
@@ -516,8 +514,7 @@ internal static partial class EvmInstructions
         where TOpCount : struct, IOpCount
         where TTracingInst : struct, IFlag
     {
-        // Deduct a very low gas cost for the push operation.
-        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
+        // Static gas is pre-deducted by the dispatch loop.
         // Retrieve the code segment containing immediate data.
         ReadOnlySpan<byte> code = vm.VmState.Env.CodeInfo.CodeSpan;
         // Use the push method defined by the specific push operation.
@@ -544,8 +541,7 @@ internal static partial class EvmInstructions
         where TOpCount : struct, IOpCount
         where TTracingInst : struct, IFlag
     {
-        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
-
+        // Static gas is pre-deducted by the dispatch loop.
         return stack.Dup<TTracingInst>(TOpCount.Count);
     }
 
@@ -566,7 +562,7 @@ internal static partial class EvmInstructions
         where TOpCount : struct, IOpCount
         where TTracingInst : struct, IFlag
     {
-        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
+        // Static gas is pre-deducted by the dispatch loop.
         // Swap the top element with the (n+1)th element; ensure adequate stack depth.
         return stack.Swap<TTracingInst>(TOpCount.Count + 1);
     }

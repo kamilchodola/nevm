@@ -31,8 +31,7 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        // Deduct the base gas cost for reading the program counter.
-        TGasPolicy.Consume(ref gas, GasCostOf.Base);
+        // Static gas is pre-deducted by the dispatch loop.
         // The program counter pushed is adjusted by -1 to reflect the correct opcode location.
         stack.PushUInt32<TTracingInst>((uint)(programCounter - 1));
 
@@ -54,9 +53,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionJumpDest<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        // Deduct the gas cost specific for a jump destination marker.
-        TGasPolicy.Consume(ref gas, GasCostOf.JumpDest);
-
+        // Static gas is pre-deducted by the dispatch loop.
         return EvmExceptionType.None;
     }
 
@@ -77,8 +74,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionJump<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        // Deduct the gas cost for performing a jump.
-        TGasPolicy.Consume(ref gas, GasCostOf.Jump);
+        // Static gas is pre-deducted by the dispatch loop.
         // Pop the jump destination from the stack.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
         // Validate the jump destination and update the program counter if valid.
@@ -110,8 +106,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionJumpIf<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        // Deduct the high gas cost for a conditional jump.
-        TGasPolicy.Consume(ref gas, GasCostOf.JumpI);
+        // Static gas is pre-deducted by the dispatch loop.
         // Pop the jump destination.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
 

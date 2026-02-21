@@ -32,6 +32,7 @@ public class EvmBenchmarks
     private IBlockhashProvider _blockhashProvider = new TestBlockhashProvider(MainnetSpecProvider.Instance);
     private VmState<EthereumGasPolicy> _evmState;
     private IWorldState _stateProvider;
+    private IDisposable _scope;
 
     [GlobalSetup]
     public void GlobalSetup()
@@ -40,6 +41,7 @@ public class EvmBenchmarks
         Console.WriteLine($"Running benchmark for bytecode {ByteCode?.ToHexString()}");
 
         _stateProvider = TestWorldStateFactory.CreateForTest();
+        _scope = _stateProvider.BeginScope(IWorldState.PreGenesis);
         _stateProvider.CreateAccount(Address.Zero, 1000.Ether());
         _stateProvider.Commit(_spec);
         EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);

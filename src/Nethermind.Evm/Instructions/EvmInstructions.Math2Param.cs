@@ -54,17 +54,16 @@ internal static partial class EvmInstructions
         where TOpMath : struct, IOpMath2Param
         where TTracingInst : struct, IFlag
     {
-        // Deduct the gas cost for the specific math operation.
-        TGasPolicy.Consume(ref gas, TOpMath.GasCost);
+        // Static gas is pre-deducted by the dispatch loop.
 
-        // Pop two operands from the stack. If either pop fails, jump to the underflow handler.
-        if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b)) goto StackUnderflow;
+        // Pop first operand and peek at the second (top of stack) to modify in place.
+        if (!stack.PopUInt256(out UInt256 a) || !stack.PeekUInt256(out UInt256 b)) goto StackUnderflow;
 
         // Execute the math operation defined by TOpMath.
         TOpMath.Operation(in a, in b, out UInt256 result);
 
-        // Push the computed result onto the stack.
-        stack.PushUInt256<TTracingInst>(in result);
+        // Write result back to top of stack without changing head pointer.
+        stack.ReplaceTopUInt256(in result);
 
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.
@@ -275,8 +274,7 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        // Charge the fixed gas cost for exponentiation.
-        TGasPolicy.Consume(ref gas, GasCostOf.Exp);
+        // Base gas is pre-deducted by the dispatch loop.
 
         // Pop the base value and exponent from the stack.
         if (!stack.PopUInt256(out UInt256 a) ||

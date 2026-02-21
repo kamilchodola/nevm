@@ -56,8 +56,7 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpMath : struct, IOpMath1Param
     {
-        // Deduct the gas cost associated with the math operation.
-        TGasPolicy.Consume(ref gas, TOpMath.GasCost);
+        // Static gas is pre-deducted by the dispatch loop.
 
         // Peek at the top element of the stack without removing it.
         // This avoids an unnecessary pop/push sequence.
@@ -103,9 +102,13 @@ internal static partial class EvmInstructions
     {
         public static long GasCost => GasCostOf.Low;
 
-        public static Word Operation(Word value) => value == default
-            ? Vector256.Create((byte)0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0)
-            : Vector256.Create(0UL, 0UL, 0UL, (ulong)value.CountLeadingZeroBits() << 56).AsByte();
+        public static Word Operation(Word value)
+        {
+            // Reinterpret the native-endian Word as UInt256 and count leading zeros.
+            // UInt256.CountLeadingZeros scans from MSB limb (u3) downward — correct for native format.
+            int clz = As<Word, UInt256>(ref value).CountLeadingZeros();
+            return Vector256.Create((ulong)clz, 0UL, 0UL, 0UL).AsByte();
+        }
     }
 
     /// <summary>
@@ -117,7 +120,7 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
+        // Static gas is pre-deducted by the dispatch loop.
 
         // Pop the byte position and the 256-bit word.
         if (!stack.PopUInt256(out UInt256 a))
@@ -157,7 +160,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionSignExtend<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        TGasPolicy.Consume(ref gas, GasCostOf.Low);
+        // Static gas is pre-deducted by the dispatch loop.
 
         // Pop the index to determine which byte to use for sign extension.
         if (!stack.PopUInt256(out UInt256 a))
@@ -170,22 +173,25 @@ internal static partial class EvmInstructions
             return EvmExceptionType.None;
         }
 
-        int position = 31 - (int)a;
+        // Native-endian mapping: EVM byte index a → native byte position a.
+        // Higher-order bytes are at native positions [a+1..31].
+        int nativePos = (int)a;
 
-        // Peek at the 256-bit word without removing it.
+        // Peek at the 256-bit word in native format without removing it.
         Span<byte> bytes = stack.PeekWord256();
-        sbyte sign = (sbyte)bytes[position];
+        sbyte sign = (sbyte)bytes[nativePos];
 
-        // Extend the sign by replacing higher-order bytes.
+        // Extend the sign by replacing higher-order bytes (native positions above nativePos).
+        int fillLen = 31 - nativePos;
         if (sign >= 0)
         {
             // Fill with zero bytes.
-            BytesZero32.AsSpan(0, position).CopyTo(bytes[..position]);
+            BytesZero32.AsSpan(0, fillLen).CopyTo(bytes[(nativePos + 1)..]);
         }
         else
         {
             // Fill with 0xFF bytes.
-            BytesMax32.AsSpan(0, position).CopyTo(bytes[..position]);
+            BytesMax32.AsSpan(0, fillLen).CopyTo(bytes[(nativePos + 1)..]);
         }
 
         return EvmExceptionType.None;

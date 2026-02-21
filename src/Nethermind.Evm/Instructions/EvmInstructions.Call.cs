@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
 using Nethermind.Evm.State;
 using static Nethermind.Evm.VirtualMachineStatics;
@@ -97,16 +98,17 @@ internal static partial class EvmInstructions
         where TOpCall : struct, IOpCall
         where TTracingInst : struct, IFlag
     {
-        // Increment global call metrics.
-        Metrics.IncrementCalls();
+        // Increment global call metrics only when tracing.
+        if (TTracingInst.IsActive)
+            Metrics.IncrementCalls();
 
         // Clear previous return data.
         vm.ReturnData = null;
 
         // Pop the gas limit for the call.
         if (!stack.PopUInt256(out UInt256 gasLimit)) goto StackUnderflow;
-        // Pop the code source address from the stack.
-        Address codeSource = stack.PopAddress();
+        // Pop the code source address from the stack, reusing cached address when possible.
+        Address codeSource = stack.PopAddressCached(ref vm._cachedCallAddress);
         if (codeSource is null) goto StackUnderflow;
 
         ExecutionEnvironment env = vm.VmState.Env;
@@ -127,6 +129,55 @@ internal static partial class EvmInstructions
             goto StackUnderflow;
         }
 
+        // Single-entry code info cache: skip expensive state tree lookup for repeated calls to the same address.
+        // Invalidated by CREATE/CREATE2 (which may change code at any address).
+        CodeInfo codeInfo;
+        Address delegated;
+        if (ReferenceEquals(codeSource, vm._cachedCallAddress) && vm._cachedCallCodeInfo is not null)
+        {
+            codeInfo = vm._cachedCallCodeInfo;
+            delegated = vm._cachedCallDelegated;
+        }
+        else
+        {
+            codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, vm.Spec, out delegated);
+            vm._cachedCallCodeInfo = codeInfo;
+            vm._cachedCallDelegated = delegated;
+        }
+
+        // For non-delegate calls, the transfer value is the call value.
+        UInt256 transferValue = typeof(TOpCall) == typeof(OpDelegateCall) ? UInt256.Zero : callValue;
+
+        // Ultra-fast path for zero-value calls to empty-code addresses (post-EIP-2929).
+        // Saves: 4 PopUInt256 byte-swaps, spec interface calls, memory cost, 63/64 gas dance.
+        // Correctness: _useHotAndColdStorage implies EIP-158 (ClearEmptyAccountWhenTouched),
+        // GetCallCost()=0, and Use63Over64Rule; forward/refund cancels for empty code.
+        if (vm._useHotAndColdStorage && transferValue.IsZero &&
+            codeInfo.Code.Length == 0 && !codeInfo.IsPrecompile && delegated is null &&
+            !TTracingInst.IsActive && !vm.TxTracer.IsTracingActions)
+        {
+            // Pop remaining 4 args (dataOffset, dataLength, outputOffset, outputLength) without byte-swap
+            if (stack.Head < 4) goto StackUnderflow;
+            stack.Head -= 4;
+
+            // Inline warm/cold check (skip IsPrecompile FrozenSet lookup: empty code = not precompile)
+            bool wasCold = vm.VmState.AccessTracker.WarmUp(codeSource);
+            long accessGas = wasCold ? GasCostOf.ColdAccountAccess : GasCostOf.WarmStateRead;
+            if (!TGasPolicy.UpdateGas(ref gas, accessGas)) goto OutOfGas;
+
+            if (env.CallDepth >= MaxCallDepth)
+            {
+                vm.ReturnDataBuffer = Array.Empty<byte>();
+                stack.PushZero<TTracingInst>();
+                return EvmExceptionType.None;
+            }
+
+            vm.ReturnDataBuffer = default;
+            vm.ReturnData = null;
+            stack.PushBytes<OffFlag>(StatusCode.SuccessBytes.Span);
+            return EvmExceptionType.None;
+        }
+
         // Pop additional parameters: data offset, data length, output offset, and output length.
         if (!stack.PopUInt256(out UInt256 dataOffset) ||
             !stack.PopUInt256(out UInt256 dataLength) ||
@@ -134,14 +185,8 @@ internal static partial class EvmInstructions
             !stack.PopUInt256(out UInt256 outputLength))
             goto StackUnderflow;
 
-        // Charge gas for accessing the account's code (including delegation logic if applicable).
-        bool _ = vm.TxExecutionContext.CodeInfoRepository
-            .TryGetDelegation(codeSource, vm.Spec, out Address delegated);
         if (!TGasPolicy.ConsumeAccountAccessGasWithDelegation(ref gas, vm.Spec, in vm.VmState.AccessTracker,
                 vm.TxTracer.IsTracingAccess, codeSource, delegated)) goto OutOfGas;
-
-        // For non-delegate calls, the transfer value is the call value.
-        UInt256 transferValue = typeof(TOpCall) == typeof(OpDelegateCall) ? UInt256.Zero : callValue;
         // Enforce static call restrictions: no value transfer allowed unless it's a CALLCODE.
         if (vm.VmState.IsStatic && !transferValue.IsZero && typeof(TOpCall) != typeof(OpCallCode))
             return EvmExceptionType.StaticCallViolation;
@@ -175,9 +220,6 @@ internal static partial class EvmInstructions
             !TGasPolicy.UpdateMemoryCost(ref gas, in dataOffset, dataLength, vm.VmState) ||
             !TGasPolicy.UpdateMemoryCost(ref gas, in outputOffset, outputLength, vm.VmState))
             goto OutOfGas;
-
-        // Retrieve code information for the call and schedule background analysis if needed.
-        CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, spec);
 
         // If contract is large, charge for access
         if (spec.IsEip7907Enabled)
@@ -241,18 +283,44 @@ internal static partial class EvmInstructions
             return EvmExceptionType.None;
         }
 
+        // Fast-path for zero-value calls: skip snapshot/balance entirely since no state rollback is needed.
+        if (transferValue.IsZero && !TTracingInst.IsActive && !vm.TxTracer.IsTracingActions)
+        {
+            if (codeInfo.IsPrecompile)
+            {
+                return FastPrecompile(vm, spec, codeInfo, gasLimitUl,
+                    ref stack, ref gas, in dataOffset, dataLength, in outputOffset, in outputLength);
+            }
+
+            if (codeInfo.Code.Length == 0)
+            {
+                vm.ReturnDataBuffer = default;
+                vm.ReturnData = null;
+                stack.PushBytes<OffFlag>(StatusCode.SuccessBytes.Span);
+                TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
+                return EvmExceptionType.None;
+            }
+        }
+
         // Take a snapshot of the state for potential rollback.
         Snapshot snapshot = state.TakeSnapshot();
         // Subtract the transfer value from the caller's balance.
         state.SubtractFromBalance(caller, in transferValue, spec);
 
-        // Fast-path for calls to externally owned accounts (non-contracts)
-        if (codeInfo.IsEmpty && !TTracingInst.IsActive && !vm.TxTracer.IsTracingActions)
+        // Fast-path for non-zero-value calls to externally owned accounts (non-contracts)
+        if (codeInfo.Code.Length == 0 && !TTracingInst.IsActive && !vm.TxTracer.IsTracingActions)
         {
             vm.ReturnDataBuffer = default;
             stack.PushBytes<TTracingInst>(StatusCode.SuccessBytes.Span);
             TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
             return FastCall(vm, spec, in transferValue, target);
+        }
+
+        // Precompile fast-path for non-zero value (needs snapshot for rollback)
+        if (codeInfo.IsPrecompile && !TTracingInst.IsActive && !vm.TxTracer.IsTracingActions)
+        {
+            return FastPrecompileWithValue(vm, spec, state, codeInfo, gasLimitUl, in transferValue,
+                target, ref stack, ref gas, in dataOffset, dataLength, in outputOffset, in outputLength, in snapshot);
         }
 
         // Load call data from memory.
@@ -288,7 +356,7 @@ internal static partial class EvmInstructions
             stateForAccessLists: in vm.VmState.AccessTracker,
             snapshot: in snapshot);
 
-        return EvmExceptionType.None;
+        return EvmExceptionType.DataReturn;
 
         // Fast-call path for non-contract calls:
         // Directly credit the target account and avoid constructing a full call frame.
@@ -296,8 +364,137 @@ internal static partial class EvmInstructions
         {
             IWorldState state = vm.WorldState;
             state.AddToBalanceAndCreateIfNotExists(target, transferValue, spec);
-            Metrics.IncrementEmptyCalls();
 
+            vm.ReturnData = null;
+            return EvmExceptionType.None;
+        }
+
+        // Fast-path for zero-value precompile calls: no state changes to snapshot/restore.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static EvmExceptionType FastPrecompile(
+            VirtualMachine<TGasPolicy> vm, IReleaseSpec spec,
+            CodeInfo codeInfo, long gasLimitUl,
+            ref EvmStack stack, ref TGasPolicy gas,
+            in UInt256 dataOffset, UInt256 dataLength,
+            in UInt256 outputOffset, in UInt256 outputLength)
+        {
+            IPrecompile precompile = codeInfo.Precompile!;
+
+            // Load call data from caller's memory (already expanded/charged).
+            if (!vm.VmState.Memory.TryLoad(in dataOffset, dataLength, out ReadOnlyMemory<byte> callData))
+            {
+                TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
+                vm.ReturnDataBuffer = Array.Empty<byte>();
+                stack.PushZero<OffFlag>();
+                return EvmExceptionType.None;
+            }
+
+            // Compute precompile gas cost.
+            long totalGasCost = precompile.BaseGasCost(spec) + precompile.DataGasCost(callData, spec);
+
+            // Check if the precompile has enough gas.
+            if ((ulong)totalGasCost > (ulong)gasLimitUl)
+            {
+                vm.ReturnDataBuffer = Array.Empty<byte>();
+                stack.PushZero<OffFlag>();
+                vm.ReturnData = null;
+                return EvmExceptionType.None;
+            }
+
+            // Execute the precompile.
+            try
+            {
+                Result<byte[]> output = precompile.Run(callData, spec);
+                if (output)
+                {
+                    byte[] outputData = output.Data;
+                    vm.ReturnDataBuffer = outputData;
+
+                    if (outputLength > 0 && outputData.Length > 0)
+                    {
+                        int copyLength = Math.Min(outputData.Length, (int)outputLength);
+                        vm.VmState.Memory.TrySave(in outputOffset, outputData.AsSpan(0, copyLength).SliceWithZeroPadding(0, copyLength));
+                    }
+
+                    stack.PushBytes<OffFlag>(StatusCode.SuccessBytes.Span);
+                    TGasPolicy.UpdateGasUp(ref gas, gasLimitUl - totalGasCost);
+                    vm.ReturnData = null;
+                    return EvmExceptionType.None;
+                }
+            }
+            catch
+            {
+                // Fall through to failure path
+            }
+
+            // Precompile failure: consume all allocated gas, push failure.
+            vm.ReturnDataBuffer = Array.Empty<byte>();
+            stack.PushZero<OffFlag>();
+            vm.ReturnData = null;
+            return EvmExceptionType.None;
+        }
+
+        // Fast-path for value-transfer precompile calls: needs snapshot for rollback.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static EvmExceptionType FastPrecompileWithValue(
+            VirtualMachine<TGasPolicy> vm, IReleaseSpec spec, IWorldState worldState,
+            CodeInfo codeInfo, long gasLimitUl, in UInt256 transferValue,
+            Address target, ref EvmStack stack, ref TGasPolicy gas,
+            in UInt256 dataOffset, UInt256 dataLength,
+            in UInt256 outputOffset, in UInt256 outputLength, in Snapshot snapshot)
+        {
+            IPrecompile precompile = codeInfo.Precompile!;
+
+            if (!vm.VmState.Memory.TryLoad(in dataOffset, dataLength, out ReadOnlyMemory<byte> callData))
+            {
+                worldState.Restore(snapshot);
+                TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
+                vm.ReturnDataBuffer = Array.Empty<byte>();
+                stack.PushZero<OffFlag>();
+                return EvmExceptionType.None;
+            }
+
+            long totalGasCost = precompile.BaseGasCost(spec) + precompile.DataGasCost(callData, spec);
+
+            worldState.AddToBalanceAndCreateIfNotExists(target, transferValue, spec);
+
+            if ((ulong)totalGasCost > (ulong)gasLimitUl)
+            {
+                worldState.Restore(snapshot);
+                vm.ReturnDataBuffer = Array.Empty<byte>();
+                stack.PushZero<OffFlag>();
+                vm.ReturnData = null;
+                return EvmExceptionType.None;
+            }
+
+            try
+            {
+                Result<byte[]> output = precompile.Run(callData, spec);
+                if (output)
+                {
+                    byte[] outputData = output.Data;
+                    vm.ReturnDataBuffer = outputData;
+
+                    if (outputLength > 0 && outputData.Length > 0)
+                    {
+                        int copyLength = Math.Min(outputData.Length, (int)outputLength);
+                        vm.VmState.Memory.TrySave(in outputOffset, outputData.AsSpan(0, copyLength).SliceWithZeroPadding(0, copyLength));
+                    }
+
+                    stack.PushBytes<OffFlag>(StatusCode.SuccessBytes.Span);
+                    TGasPolicy.UpdateGasUp(ref gas, gasLimitUl - totalGasCost);
+                    vm.ReturnData = null;
+                    return EvmExceptionType.None;
+                }
+            }
+            catch
+            {
+                // Fall through to failure path
+            }
+
+            worldState.Restore(snapshot);
+            vm.ReturnDataBuffer = Array.Empty<byte>();
+            stack.PushZero<OffFlag>();
             vm.ReturnData = null;
             return EvmExceptionType.None;
         }
@@ -361,7 +558,7 @@ internal static partial class EvmInstructions
 
         vm.ReturnData = returnData.ToArray();
 
-        return EvmExceptionType.None;
+        return EvmExceptionType.DataReturn;
     // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;

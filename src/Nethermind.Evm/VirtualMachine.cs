@@ -98,9 +98,20 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     private ICodeInfoRepository _codeInfoRepository;
 
     private delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] _opcodeMethods;
+    private long[] _staticGasCosts;
+    internal bool _useHotAndColdStorage;
+    internal long _sloadCost;
+    internal long _netMeteredSStoreCost;
+    internal long _sstoreResetCost;
+    internal long _clearReversalRefund;
+    internal long _setReversalRefund;
+    internal long _sClearRefunds;
     private static long _txCount;
 
     private ReadOnlyMemory<byte> _returnDataBuffer = Array.Empty<byte>();
+    internal Address? _cachedCallAddress;
+    internal CodeInfo? _cachedCallCodeInfo;
+    internal Address? _cachedCallDelegated;
     protected VmState<TGasPolicy> _currentState;
     protected ReadOnlyMemory<byte>? _previousCallResult;
     protected UInt256 _previousCallOutputDestination;
@@ -860,6 +871,17 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     private void PrepareOpcodes<TTracingInst>(IReleaseSpec spec)
         where TTracingInst : struct, IFlag
     {
+        _useHotAndColdStorage = spec.UseHotAndColdStorage;
+        _sloadCost = spec.GetSLoadCost();
+        _sstoreResetCost = spec.GetSStoreResetCost();
+        _sClearRefunds = RefundOf.SClear(spec.IsEip3529Enabled);
+        // Net metered costs are only valid when any form of net gas metering is enabled.
+        if (spec.UseConstantinopleNetGasMetering || spec.UseIstanbulNetGasMetering || spec.UseHotAndColdStorage)
+        {
+            _netMeteredSStoreCost = spec.GetNetMeteredSStoreCost();
+            _clearReversalRefund = spec.GetClearReversalRefund();
+            _setReversalRefund = spec.GetSetReversalRefund();
+        }
         // Check if tracing instructions are inactive.
         if (!TTracingInst.IsActive)
         {
@@ -885,6 +907,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             // For tracing-enabled execution, generate (if necessary) and cache the traced opcode set.
             _opcodeMethods = (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[])(spec.EvmInstructionsTraced ??= GenerateOpCodes<TTracingInst>(spec));
         }
+        _staticGasCosts = EvmInstructions.StaticGasCosts;
     }
 
     protected virtual delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] GenerateOpCodes<TTracingInst>(IReleaseSpec spec)
@@ -1231,8 +1254,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // Pin the opcode methods array to obtain a fixed pointer, avoiding repeated bounds checks.
         // If we don't use a pointer we have bounds checks (however only 256 opcodes and opcode is a byte so know always in bounds).
         var opcodeArray = _opcodeMethods;
+        long[] staticGasArray = _staticGasCosts;
         fixed (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>*
                opcodeMethods = &opcodeArray[0])
+        fixed (long* staticGas = &staticGasArray[0])
         {
             int opCodeCount = 0;
             ref Instruction code = ref MemoryMarshal.GetReference(codeSection);
@@ -1261,47 +1286,93 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 programCounter++;
                 opCodeCount++;
 
-                // For the very common POP opcode, use an inlined implementation to reduce overhead.
-                if (Instruction.POP == instruction)
+                // Pre-deduct static gas for all opcodes in the dispatch loop.
+                // Instruction bodies only handle dynamic gas (if any).
+                TGasPolicy.Consume(ref gas, staticGas[(int)instruction]);
+
+                // Inline the most common opcodes to avoid function pointer call overhead.
+                if (instruction == Instruction.JUMPDEST) { }
+                else if (instruction == Instruction.PUSH1)
                 {
-                    exceptionType = EvmInstructions.InstructionPop(this, ref stack, ref gas, ref programCounter);
+                    // PUSH1: read immediate byte.
+                    int imm = (int)(byte)Unsafe.Add(ref code, programCounter);
+                    // Fuse PUSH1+JUMP: if next byte is JUMP, skip the stack entirely.
+                    if (!TTracingInst.IsActive &&
+                        (uint)(programCounter + 1) < (uint)codeSection.Length &&
+                        Unsafe.Add(ref code, programCounter + 1) == Instruction.JUMP)
+                    {
+                        // Consume JUMP's static gas and count it.
+                        TGasPolicy.Consume(ref gas, staticGas[(int)Instruction.JUMP]);
+                        opCodeCount++;
+                        // Validate destination and jump.
+                        if (VmState.Env.CodeInfo.ValidateJump(imm))
+                            programCounter = imm;
+                        else
+                            exceptionType = EvmExceptionType.InvalidJumpDestination;
+                    }
+                    else
+                    {
+                        stack.PushByte<TTracingInst>((byte)imm);
+                        programCounter++;
+                    }
+                }
+                else if (instruction == Instruction.POP)
+                {
+                    // POP: just decrement stack head.
+                    if (!stack.PopLimbo())
+                        exceptionType = EvmExceptionType.StackUnderflow;
+                }
+                else if (instruction == Instruction.DUP1)
+                {
+                    // DUP1: direct call bypasses function pointer indirection so JIT can inline.
+                    exceptionType = stack.Dup<TTracingInst>(1);
+                }
+                else if (instruction == Instruction.SWAP1)
+                {
+                    // SWAP1: direct call bypasses function pointer indirection so JIT can inline.
+                    exceptionType = stack.Swap<TTracingInst>(2);
+                }
+                else if (instruction == Instruction.ISZERO)
+                {
+                    // ISZERO: inline to avoid function pointer + generic wrapper overhead.
+                    ref byte bytesRef = ref stack.PeekBytesByRef();
+                    if (Unsafe.IsNullRef(ref bytesRef))
+                        exceptionType = EvmExceptionType.StackUnderflow;
+                    else
+                    {
+                        ref UInt256 val = ref Unsafe.As<byte, UInt256>(ref bytesRef);
+                        val = val.IsZero ? UInt256.One : default;
+                    }
                 }
                 else
                 {
-                    // Retrieve the opcode function pointer corresponding to the current instruction.
-                    var opcodeMethod = opcodeMethods[(int)instruction];
-                    // Invoke the opcode method, which may modify the stack, gas, and program counter.
-                    // Is executed using fast delegate* via calli (see: C# function pointers https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/unsafe-code#function-pointers)
-                    exceptionType = opcodeMethod(this, ref stack, ref gas, ref programCounter);
+                    exceptionType = opcodeMethods[(int)instruction](this, ref stack, ref gas, ref programCounter);
                 }
 
-                // If gas is exhausted, jump to the out-of-gas handler.
-                if (TGasPolicy.GetRemainingGas(in gas) < 0)
+                // Combined gas + exception check: single branch for the common (no-error) case.
+                // Bitwise OR avoids short-circuit, evaluating both conditions before branching.
+                if (TGasPolicy.GetRemainingGas(in gas) < 0 | exceptionType != EvmExceptionType.None)
                 {
-                    OpCodeCount += opCodeCount;
-                    goto OutOfGas;
+                    TGasPolicy.OnAfterInstructionTrace(in gas);
+                    if (TGasPolicy.GetRemainingGas(in gas) < 0)
+                    {
+                        OpCodeCount += opCodeCount;
+                        goto OutOfGas;
+                    }
+                    break;
                 }
 
-                // Call gas policy hook after instruction execution.
                 TGasPolicy.OnAfterInstructionTrace(in gas);
-
-                // If an exception occurred, exit the loop.
-                if (exceptionType != EvmExceptionType.None)
-                    break;
 
                 // If tracing is enabled, complete the trace for the current instruction.
                 if (TTracingInst.IsActive)
                     EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
-
-                // If return data has been set, exit the loop to process the returned value.
-                if (ReturnData is not null)
-                    break;
             }
             OpCodeCount += opCodeCount;
         }
 
-        // Update the current VM state if no fatal exception occurred, or if the exception is of type Stop or Revert.
-        if (exceptionType is EvmExceptionType.None or EvmExceptionType.Stop or EvmExceptionType.Revert)
+        // Update the current VM state if no fatal exception occurred, or if the exception is of type Stop, Revert, or DataReturn.
+        if (exceptionType is EvmExceptionType.None or EvmExceptionType.Stop or EvmExceptionType.Revert or EvmExceptionType.DataReturn)
         {
             // If tracing is enabled, complete the trace for the current instruction.
             if (TTracingInst.IsActive)
@@ -1318,7 +1389,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         if (exceptionType == EvmExceptionType.Revert)
             goto Revert;
         // If return data was produced, jump to the return data processing block.
-        if (ReturnData is not null)
+        if (exceptionType == EvmExceptionType.DataReturn)
             goto DataReturn;
 
         // If no return data is produced, return an empty call result.

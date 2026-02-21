@@ -77,8 +77,12 @@ internal static partial class EvmInstructions
         where TOpCreate : struct, IOpCreate
         where TTracingInst : struct, IFlag
     {
-        // Increment metrics counter for contract creation operations.
-        Metrics.IncrementCreates();
+        // Increment metrics counter only when tracing.
+        if (TTracingInst.IsActive)
+            Metrics.IncrementCreates();
+
+        // Invalidate code info cache since CREATE may change code at any address.
+        vm._cachedCallCodeInfo = null;
 
         // Obtain the current EVM specification and check if the call is static (static calls cannot create contracts).
         IReleaseSpec spec = vm.Spec;
@@ -248,6 +252,8 @@ internal static partial class EvmInstructions
             env: callEnv,
             stateForAccessLists: in vm.VmState.AccessTracker,
             snapshot: in snapshot);
+
+        return EvmExceptionType.DataReturn;
     None:
         return EvmExceptionType.None;
     // Jump forward to be unpredicted by the branch predictor.

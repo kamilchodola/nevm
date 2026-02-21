@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
+using System.Runtime.Intrinsics;
 using Nethermind.Core;
 using Nethermind.Evm.GasPolicy;
 using static System.Runtime.CompilerServices.Unsafe;
@@ -9,6 +10,7 @@ using static System.Runtime.CompilerServices.Unsafe;
 namespace Nethermind.Evm;
 
 using Int256;
+using Word = Vector256<byte>;
 
 internal static partial class EvmInstructions
 {
@@ -55,26 +57,25 @@ internal static partial class EvmInstructions
         where TOpShift : struct, IOpShift
         where TTracingInst : struct, IFlag
     {
-        // Deduct gas cost specific to the shift operation.
-        TGasPolicy.Consume(ref gas, TOpShift.GasCost);
+        // Static gas is pre-deducted by the dispatch loop.
 
         // Pop the shift amount from the stack.
         if (!stack.PopUInt256(out UInt256 a)) goto StackUnderflow;
 
-        // If the shift amount is 256 or more, per EVM semantics, discard the second operand and push zero.
+        // If the shift amount is 256 or more, per EVM semantics, the result is zero.
         if (a >= 256)
         {
-            // Pop the second operand without using its value.
-            if (!stack.PopLimbo()) goto StackUnderflow;
-            stack.PushZero<TTracingInst>();
+            // Peek at second operand to confirm it exists, then zero it in place.
+            ref byte bytesRef = ref stack.PeekBytesByRef();
+            if (Unsafe.IsNullRef(ref bytesRef)) goto StackUnderflow;
+            Unsafe.WriteUnaligned(ref bytesRef, default(Word));
         }
         else
         {
-            // Otherwise, pop the value to be shifted.
-            if (!stack.PopUInt256(out UInt256 b)) goto StackUnderflow;
-            // Perform the shift operation using the specific implementation.
+            // Peek at the value to be shifted and modify in place.
+            if (!stack.PeekUInt256(out UInt256 b)) goto StackUnderflow;
             TOpShift.Operation(in a, in b, out UInt256 result);
-            stack.PushUInt256<TTracingInst>(in result);
+            stack.ReplaceTopUInt256(in result);
         }
 
         return EvmExceptionType.None;
@@ -102,11 +103,10 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        // Deduct the gas cost for the arithmetic shift operation.
-        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
+        // Static gas is pre-deducted by the dispatch loop.
 
-        // Pop the shift amount and the value to be shifted.
-        if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b)) goto StackUnderflow;
+        // Pop the shift amount, peek at the value to be shifted.
+        if (!stack.PopUInt256(out UInt256 a) || !stack.PeekUInt256(out UInt256 b)) goto StackUnderflow;
 
         // If the shift amount is 256 or more, the result depends solely on the sign of the value.
         if (a >= 256)
@@ -115,12 +115,12 @@ internal static partial class EvmInstructions
             if (As<UInt256, Int256>(ref b).Sign >= 0)
             {
                 // Non-negative value: result is zero.
-                stack.PushZero<TTracingInst>();
+                stack.ReplaceTopUInt256(in UInt256.Zero);
             }
             else
             {
                 // Negative value: result is -1 (all bits set).
-                stack.PushSignedInt256<TTracingInst>(in Int256.MinusOne);
+                stack.ReplaceTopUInt256(in As<Int256, UInt256>(ref AsRef(in Int256.MinusOne)));
             }
         }
         else
@@ -128,7 +128,7 @@ internal static partial class EvmInstructions
             // For a valid shift amount (<256), perform an arithmetic right shift.
             As<UInt256, Int256>(ref b).RightShift((int)a, out Int256 result);
             // Convert the signed result back to unsigned representation.
-            stack.PushUInt256<TTracingInst>(in As<Int256, UInt256>(ref result));
+            stack.ReplaceTopUInt256(in As<Int256, UInt256>(ref result));
         }
 
         return EvmExceptionType.None;

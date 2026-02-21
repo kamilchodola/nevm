@@ -19,5 +19,6 @@
   </Folder>
   <Folder Name="/bench/">
     <Project Path="bench/Nevm.Benchmarks/Nevm.Benchmarks.csproj" />
+    <Project Path="bench/Nevm.EvmBench/Nevm.EvmBench.csproj" />
   </Folder>
 </Solution>

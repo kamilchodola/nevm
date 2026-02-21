@@ -12,6 +12,7 @@ namespace Nethermind.Evm
 
     public enum EvmExceptionType
     {
+        DataReturn = -2,
         Stop = -1,
         None = 0,
         BadInstruction,

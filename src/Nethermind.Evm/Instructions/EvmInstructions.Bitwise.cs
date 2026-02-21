@@ -47,8 +47,7 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpBitwise : struct, IOpBitwise
     {
-        // Deduct the operation's gas cost.
-        TGasPolicy.Consume(ref gas, TOpBitwise.GasCost);
+        // Static gas is pre-deducted by the dispatch loop.
 
         // Pop the first operand from the stack by reference to minimize copying.
         ref byte bytesRef = ref stack.PopBytesByRef();
@@ -101,14 +100,8 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpBitwiseEq : IOpBitwise
     {
-        // Precomputed vector used as a marker for equality (only the last byte is set to 1).
-        public static Word One = Vector256.Create(
-            (byte)
-            0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 1
-        );
+        // Precomputed vector for value 1 in native UInt256 format: u0=1 → byte[0]=1.
+        public static Word One = Vector256.Create(1UL, 0UL, 0UL, 0UL).AsByte();
 
         // Returns a non-zero marker vector if the operands are equal.
         public static Word Operation(in Word a, in Word b) => a == b ? One : default;
