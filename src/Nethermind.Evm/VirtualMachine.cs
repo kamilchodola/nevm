@@ -110,6 +110,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
     private ReadOnlyMemory<byte> _returnDataBuffer = Array.Empty<byte>();
     internal Address? _cachedCallAddress;
+    internal Address? _cachedCallCodeSource;
     internal CodeInfo? _cachedCallCodeInfo;
     internal Address? _cachedCallDelegated;
     protected VmState<TGasPolicy> _currentState;

@@ -131,9 +131,11 @@ internal static partial class EvmInstructions
 
         // Single-entry code info cache: skip expensive state tree lookup for repeated calls to the same address.
         // Invalidated by CREATE/CREATE2 (which may change code at any address).
+        // Uses _cachedCallCodeSource (separate from _cachedCallAddress used by PopAddressCached)
+        // so that the Address-object cache doesn't corrupt the CodeInfo cache.
         CodeInfo codeInfo;
         Address delegated;
-        if (ReferenceEquals(codeSource, vm._cachedCallAddress) && vm._cachedCallCodeInfo is not null)
+        if (ReferenceEquals(codeSource, vm._cachedCallCodeSource) && vm._cachedCallCodeInfo is not null)
         {
             codeInfo = vm._cachedCallCodeInfo;
             delegated = vm._cachedCallDelegated;
@@ -141,6 +143,7 @@ internal static partial class EvmInstructions
         else
         {
             codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, vm.Spec, out delegated);
+            vm._cachedCallCodeSource = codeSource;
             vm._cachedCallCodeInfo = codeInfo;
             vm._cachedCallDelegated = delegated;
         }
