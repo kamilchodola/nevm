@@ -151,22 +151,30 @@ internal static partial class EvmInstructions
         // For non-delegate calls, the transfer value is the call value.
         UInt256 transferValue = typeof(TOpCall) == typeof(OpDelegateCall) ? UInt256.Zero : callValue;
 
-        // Ultra-fast path for zero-value calls to empty-code addresses (post-EIP-2929).
-        // Saves: 4 PopUInt256 byte-swaps, spec interface calls, memory cost, 63/64 gas dance.
+        // Fast path for zero-value calls to empty-code addresses (post-EIP-2929).
+        // Saves: spec interface calls, 63/64 gas dance, frame creation.
         // Correctness: _useHotAndColdStorage implies EIP-158 (ClearEmptyAccountWhenTouched),
         // GetCallCost()=0, and Use63Over64Rule; forward/refund cancels for empty code.
         if (vm._useHotAndColdStorage && transferValue.IsZero &&
             codeInfo.Code.Length == 0 && !codeInfo.IsPrecompile && delegated is null &&
             !TTracingInst.IsActive && !vm.TxTracer.IsTracingActions)
         {
-            // Pop remaining 4 args (dataOffset, dataLength, outputOffset, outputLength) without byte-swap
-            if (stack.Head < 4) goto StackUnderflow;
-            stack.Head -= 4;
+            // Pop remaining 4 args: must read values for memory expansion charging.
+            if (!stack.PopUInt256(out UInt256 fpDataOffset) ||
+                !stack.PopUInt256(out UInt256 fpDataLength) ||
+                !stack.PopUInt256(out UInt256 fpOutputOffset) ||
+                !stack.PopUInt256(out UInt256 fpOutputLength))
+                goto StackUnderflow;
 
             // Inline warm/cold check (skip IsPrecompile FrozenSet lookup: empty code = not precompile)
             bool wasCold = vm.VmState.AccessTracker.WarmUp(codeSource);
             long accessGas = wasCold ? GasCostOf.ColdAccountAccess : GasCostOf.WarmStateRead;
             if (!TGasPolicy.UpdateGas(ref gas, accessGas)) goto OutOfGas;
+
+            // Charge memory expansion for input and output regions (required by EVM spec).
+            if (!TGasPolicy.UpdateMemoryCost(ref gas, in fpDataOffset, fpDataLength, vm.VmState) ||
+                !TGasPolicy.UpdateMemoryCost(ref gas, in fpOutputOffset, fpOutputLength, vm.VmState))
+                goto OutOfGas;
 
             if (env.CallDepth >= MaxCallDepth)
             {
