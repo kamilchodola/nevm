@@ -133,27 +133,25 @@ namespace Nethermind.Evm.Test
         public void Logs_are_committed()
         {
             VmState<EthereumGasPolicy> parentVmState = CreateEvmState();
-            LogEntry logEntry = new(Address.Zero, Bytes.Empty, []);
             using (VmState<EthereumGasPolicy> vmState = CreateEvmState(parentVmState))
             {
-                vmState.AccessTracker.Logs.Add(logEntry);
+                vmState.AccessTracker.Logs.AddEntry(Address.Zero, [], 0);
                 vmState.CommitToParent(parentVmState);
             }
 
-            parentVmState.AccessTracker.Logs.Contains(logEntry).Should().BeTrue();
+            parentVmState.AccessTracker.Logs.Count.Should().Be(1);
         }
 
         [Test]
         public void Logs_are_restored()
         {
             VmState<EthereumGasPolicy> parentVmState = CreateEvmState();
-            LogEntry logEntry = new(Address.Zero, Bytes.Empty, []);
             using (VmState<EthereumGasPolicy> vmState = CreateEvmState(parentVmState))
             {
-                vmState.AccessTracker.Logs.Add(logEntry);
+                vmState.AccessTracker.Logs.AddEntry(Address.Zero, [], 0);
             }
 
-            parentVmState.AccessTracker.Logs.Contains(logEntry).Should().BeFalse();
+            parentVmState.AccessTracker.Logs.Count.Should().Be(0);
         }
 
         [Test]

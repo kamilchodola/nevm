@@ -411,6 +411,16 @@ internal static unsafe partial class EvmInstructions
         lookup[(int)Instruction.INVALID] = &InstructionInvalid;
         lookup[(int)Instruction.SELFDESTRUCT] = &InstructionSelfDestruct;
 
+        // Null out opcodes that are inlined in the dispatch loop.
+        // The dispatch loop checks for null pointers first, so non-inlined opcodes
+        // only pay a single null-check branch instead of falling through 6 if-else checks.
+        lookup[(int)Instruction.JUMPDEST] = null;
+        lookup[(int)Instruction.PUSH1] = null;
+        lookup[(int)Instruction.POP] = null;
+        lookup[(int)Instruction.DUP1] = null;
+        lookup[(int)Instruction.SWAP1] = null;
+        lookup[(int)Instruction.ISZERO] = null;
+
         return lookup;
     }
 }

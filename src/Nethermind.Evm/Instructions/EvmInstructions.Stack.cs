@@ -607,24 +607,21 @@ internal static partial class EvmInstructions
         if (!vmState.Memory.TryLoad(in position, length, out ReadOnlyMemory<byte> data))
             goto OutOfGas;
 
-        // Prepare the topics array by popping the corresponding number of words from the stack.
-        Hash256[] topics = new Hash256[topicsCount];
-        for (int i = 0; i < topics.Length; i++)
-        {
-            topics[i] = new Hash256(stack.PopWord256());
-        }
+        // Pop topics as value types — no heap allocation.
+        ValueHash256 t0 = default, t1 = default, t2 = default, t3 = default;
+        if (topicsCount > 0) t0 = new ValueHash256(stack.PopWord256());
+        if (topicsCount > 1) t1 = new ValueHash256(stack.PopWord256());
+        if (topicsCount > 2) t2 = new ValueHash256(stack.PopWord256());
+        if (topicsCount > 3) t3 = new ValueHash256(stack.PopWord256());
 
-        // Create a new log entry with the executing account, log data, and topics.
-        LogEntry logEntry = new(
-            vmState.Env.ExecutingAccount,
-            data.ToArray(),
-            topics);
-        vmState.AccessTracker.Logs.Add(logEntry);
+        // Store compactly in the journal — data bytes are copied into a flat buffer, no per-LOG allocations.
+        LogJournal logs = vmState.AccessTracker.Logs;
+        logs.AddEntry(vmState.Env.ExecutingAccount, data.Span, (int)topicsCount, in t0, in t1, in t2, in t3);
 
-        // Optionally report the log if tracing is enabled.
+        // Optionally report the log if tracing is enabled (rare path — materializes LogEntry on demand).
         if (vm.TxTracer.IsTracingLogs)
         {
-            vm.TxTracer.ReportLog(logEntry);
+            vm.TxTracer.ReportLog(logs.MaterializeEntry(logs.Count - 1));
         }
 
         return EvmExceptionType.None;

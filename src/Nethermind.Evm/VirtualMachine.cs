@@ -1291,63 +1291,72 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 // Instruction bodies only handle dynamic gas (if any).
                 TGasPolicy.Consume(ref gas, staticGas[(int)instruction]);
 
-                // Inline the most common opcodes to avoid function pointer call overhead.
-                if (instruction == Instruction.JUMPDEST) { }
-                else if (instruction == Instruction.PUSH1)
+                // Two-level dispatch: inlined opcodes have null function pointers in the table.
+                // Non-inlined opcodes (MSTORE, ADD, PUSH32, etc.) hit a single null-check branch
+                // instead of falling through 6 if-else comparisons.
                 {
-                    // PUSH1: read immediate byte.
-                    int imm = (int)(byte)Unsafe.Add(ref code, programCounter);
-                    // Fuse PUSH1+JUMP: if next byte is JUMP, skip the stack entirely.
-                    if (!TTracingInst.IsActive &&
-                        (uint)(programCounter + 1) < (uint)codeSection.Length &&
-                        Unsafe.Add(ref code, programCounter + 1) == Instruction.JUMP)
+                    var opcodeMethod = opcodeMethods[(int)instruction];
+                    if (opcodeMethod != null)
                     {
-                        // Consume JUMP's static gas and count it.
-                        TGasPolicy.Consume(ref gas, staticGas[(int)Instruction.JUMP]);
-                        opCodeCount++;
-                        // Validate destination and jump.
-                        if (VmState.Env.CodeInfo.ValidateJump(imm))
-                            programCounter = imm;
-                        else
-                            exceptionType = EvmExceptionType.InvalidJumpDestination;
+                        exceptionType = opcodeMethod(this, ref stack, ref gas, ref programCounter);
                     }
                     else
                     {
-                        stack.PushByte<TTracingInst>((byte)imm);
-                        programCounter++;
+                        // Inlined opcodes for maximum throughput.
+                        if (instruction == Instruction.JUMPDEST) { }
+                        else if (instruction == Instruction.PUSH1)
+                        {
+                            // PUSH1: read immediate byte.
+                            int imm = (int)(byte)Unsafe.Add(ref code, programCounter);
+                            // Fuse PUSH1+JUMP: if next byte is JUMP, skip the stack entirely.
+                            if (!TTracingInst.IsActive &&
+                                (uint)(programCounter + 1) < (uint)codeSection.Length &&
+                                Unsafe.Add(ref code, programCounter + 1) == Instruction.JUMP)
+                            {
+                                // Consume JUMP's static gas and count it.
+                                TGasPolicy.Consume(ref gas, staticGas[(int)Instruction.JUMP]);
+                                opCodeCount++;
+                                // Validate destination and jump.
+                                if (VmState.Env.CodeInfo.ValidateJump(imm))
+                                    programCounter = imm;
+                                else
+                                    exceptionType = EvmExceptionType.InvalidJumpDestination;
+                            }
+                            else
+                            {
+                                stack.PushByte<TTracingInst>((byte)imm);
+                                programCounter++;
+                            }
+                        }
+                        else if (instruction == Instruction.POP)
+                        {
+                            // POP: just decrement stack head.
+                            if (!stack.PopLimbo())
+                                exceptionType = EvmExceptionType.StackUnderflow;
+                        }
+                        else if (instruction == Instruction.DUP1)
+                        {
+                            // DUP1: direct call bypasses function pointer indirection so JIT can inline.
+                            exceptionType = stack.Dup<TTracingInst>(1);
+                        }
+                        else if (instruction == Instruction.SWAP1)
+                        {
+                            // SWAP1: direct call bypasses function pointer indirection so JIT can inline.
+                            exceptionType = stack.Swap<TTracingInst>(2);
+                        }
+                        else if (instruction == Instruction.ISZERO)
+                        {
+                            // ISZERO: inline to avoid function pointer + generic wrapper overhead.
+                            ref byte bytesRef = ref stack.PeekBytesByRef();
+                            if (Unsafe.IsNullRef(ref bytesRef))
+                                exceptionType = EvmExceptionType.StackUnderflow;
+                            else
+                            {
+                                ref UInt256 val = ref Unsafe.As<byte, UInt256>(ref bytesRef);
+                                val = val.IsZero ? UInt256.One : default;
+                            }
+                        }
                     }
-                }
-                else if (instruction == Instruction.POP)
-                {
-                    // POP: just decrement stack head.
-                    if (!stack.PopLimbo())
-                        exceptionType = EvmExceptionType.StackUnderflow;
-                }
-                else if (instruction == Instruction.DUP1)
-                {
-                    // DUP1: direct call bypasses function pointer indirection so JIT can inline.
-                    exceptionType = stack.Dup<TTracingInst>(1);
-                }
-                else if (instruction == Instruction.SWAP1)
-                {
-                    // SWAP1: direct call bypasses function pointer indirection so JIT can inline.
-                    exceptionType = stack.Swap<TTracingInst>(2);
-                }
-                else if (instruction == Instruction.ISZERO)
-                {
-                    // ISZERO: inline to avoid function pointer + generic wrapper overhead.
-                    ref byte bytesRef = ref stack.PeekBytesByRef();
-                    if (Unsafe.IsNullRef(ref bytesRef))
-                        exceptionType = EvmExceptionType.StackUnderflow;
-                    else
-                    {
-                        ref UInt256 val = ref Unsafe.As<byte, UInt256>(ref bytesRef);
-                        val = val.IsZero ? UInt256.One : default;
-                    }
-                }
-                else
-                {
-                    exceptionType = opcodeMethods[(int)instruction](this, ref stack, ref gas, ref programCounter);
                 }
 
                 // Combined gas + exception check: single branch for the common (no-error) case.
