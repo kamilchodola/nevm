@@ -31,7 +31,7 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        // Static gas is pre-deducted by the dispatch loop.
+        TGasPolicy.Consume(ref gas, GasCostOf.Base);
         // The program counter pushed is adjusted by -1 to reflect the correct opcode location.
         stack.PushUInt32<TTracingInst>((uint)(programCounter - 1));
 
@@ -53,7 +53,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionJumpDest<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        // Static gas is pre-deducted by the dispatch loop.
+        TGasPolicy.Consume(ref gas, GasCostOf.JumpDest);
         return EvmExceptionType.None;
     }
 
@@ -74,7 +74,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionJump<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        // Static gas is pre-deducted by the dispatch loop.
+        TGasPolicy.Consume(ref gas, GasCostOf.Jump);
         // Pop the jump destination from the stack.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
         // Validate the jump destination and update the program counter if valid.
@@ -106,7 +106,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionJumpIf<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        // Static gas is pre-deducted by the dispatch loop.
+        TGasPolicy.Consume(ref gas, GasCostOf.JumpI);
         // Pop the jump destination.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
 

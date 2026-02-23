@@ -12,100 +12,6 @@ namespace Nethermind.Evm;
 internal static unsafe partial class EvmInstructions
 {
     /// <summary>
-    /// Pre-computed static gas costs for each opcode, indexed by opcode value.
-    /// Used by the dispatch loop to pre-deduct gas before calling the instruction handler.
-    /// Opcodes with only dynamic gas have a cost of 0 here.
-    /// </summary>
-    public static readonly long[] StaticGasCosts = GenerateStaticGasCosts();
-
-    private static long[] GenerateStaticGasCosts()
-    {
-        long[] costs = new long[256];
-
-        // Arithmetic: VeryLow (3) for ADD, SUB; Low (5) for MUL, DIV, SDIV, MOD, SMOD, SIGNEXTEND
-        costs[(int)Instruction.ADD] = GasCostOf.VeryLow;
-        costs[(int)Instruction.SUB] = GasCostOf.VeryLow;
-        costs[(int)Instruction.MUL] = GasCostOf.Low;
-        costs[(int)Instruction.DIV] = GasCostOf.Low;
-        costs[(int)Instruction.SDIV] = GasCostOf.Low;
-        costs[(int)Instruction.MOD] = GasCostOf.Low;
-        costs[(int)Instruction.SMOD] = GasCostOf.Low;
-        costs[(int)Instruction.ADDMOD] = GasCostOf.Mid;
-        costs[(int)Instruction.MULMOD] = GasCostOf.Mid;
-        costs[(int)Instruction.EXP] = GasCostOf.Exp;
-        costs[(int)Instruction.SIGNEXTEND] = GasCostOf.Low;
-
-        // Comparison and bitwise: VeryLow (3)
-        costs[(int)Instruction.LT] = GasCostOf.VeryLow;
-        costs[(int)Instruction.GT] = GasCostOf.VeryLow;
-        costs[(int)Instruction.SLT] = GasCostOf.VeryLow;
-        costs[(int)Instruction.SGT] = GasCostOf.VeryLow;
-        costs[(int)Instruction.EQ] = GasCostOf.VeryLow;
-        costs[(int)Instruction.ISZERO] = GasCostOf.VeryLow;
-        costs[(int)Instruction.AND] = GasCostOf.VeryLow;
-        costs[(int)Instruction.OR] = GasCostOf.VeryLow;
-        costs[(int)Instruction.XOR] = GasCostOf.VeryLow;
-        costs[(int)Instruction.NOT] = GasCostOf.VeryLow;
-        costs[(int)Instruction.BYTE] = GasCostOf.VeryLow;
-        costs[(int)Instruction.SHL] = GasCostOf.VeryLow;
-        costs[(int)Instruction.SHR] = GasCostOf.VeryLow;
-        costs[(int)Instruction.SAR] = GasCostOf.VeryLow;
-        costs[(int)Instruction.CLZ] = GasCostOf.Low;
-
-        // Crypto: base gas only (dynamic gas handled inside instruction)
-        costs[(int)Instruction.KECCAK256] = GasCostOf.Sha3;
-
-        // Environment/Block opcodes: gas still handled internally (not yet migrated)
-        // ADDRESS, ORIGIN, CALLER, CALLVALUE, CALLDATASIZE, CODESIZE, GASPRICE,
-        // COINBASE, TIMESTAMP, NUMBER, PREVRANDAO, GASLIMIT, CHAINID, BASEFEE,
-        // BLOBBASEFEE, BLOBHASH, RETURNDATASIZE, RETURNDATACOPY, CALLDATACOPY, CODECOPY
-        // all remain 0 here (handled internally)
-
-        costs[(int)Instruction.CALLDATALOAD] = GasCostOf.VeryLow;
-
-        // Stack and memory
-        costs[(int)Instruction.POP] = GasCostOf.Base;
-        costs[(int)Instruction.MLOAD] = GasCostOf.VeryLow;
-        costs[(int)Instruction.MSTORE] = GasCostOf.VeryLow;
-        costs[(int)Instruction.MSTORE8] = GasCostOf.VeryLow;
-        costs[(int)Instruction.JUMP] = GasCostOf.Mid;
-        costs[(int)Instruction.JUMPI] = GasCostOf.High;
-        costs[(int)Instruction.PC] = GasCostOf.Base;
-        // MSIZE and GAS: gas still handled internally
-        // costs[(int)Instruction.MSIZE] = 0;
-        // costs[(int)Instruction.GAS] = 0;
-        costs[(int)Instruction.JUMPDEST] = GasCostOf.JumpDest;
-        costs[(int)Instruction.MCOPY] = GasCostOf.VeryLow;
-
-        // PUSH0-PUSH32
-        costs[(int)Instruction.PUSH0] = GasCostOf.Base;
-        for (int i = (int)Instruction.PUSH1; i <= (int)Instruction.PUSH32; i++)
-            costs[i] = GasCostOf.VeryLow;
-
-        // DUP1-DUP16
-        for (int i = (int)Instruction.DUP1; i <= (int)Instruction.DUP16; i++)
-            costs[i] = GasCostOf.VeryLow;
-
-        // SWAP1-SWAP16
-        for (int i = (int)Instruction.SWAP1; i <= (int)Instruction.SWAP16; i++)
-            costs[i] = GasCostOf.VeryLow;
-
-        // Transient storage
-        costs[(int)Instruction.TLOAD] = GasCostOf.TLoad;
-        costs[(int)Instruction.TSTORE] = GasCostOf.TStore;
-
-        // SLOAD, SSTORE, BALANCE, EXTCODESIZE, EXTCODECOPY, EXTCODEHASH, BLOCKHASH,
-        // SELFBALANCE, LOG0-LOG4, CREATE, CREATE2, CALL, CALLCODE, DELEGATECALL, STATICCALL,
-        // SELFDESTRUCT, RETURN, REVERT, STOP, INVALID — all have 0 or fully dynamic gas
-        // and handle their own gas internally.
-
-        // RETURNDATALOAD: VeryLow (3) in EOF
-        costs[(int)Instruction.RETURNDATALOAD] = GasCostOf.VeryLow;
-
-        return costs;
-    }
-
-    /// <summary>
     /// Generates the opcode lookup table for the Ethereum Virtual Machine.
     /// Each of the 256 entries in the returned array corresponds to an EVM instruction,
     /// with unassigned opcodes defaulting to a bad instruction handler.
@@ -410,16 +316,6 @@ internal static unsafe partial class EvmInstructions
         // Final opcodes.
         lookup[(int)Instruction.INVALID] = &InstructionInvalid;
         lookup[(int)Instruction.SELFDESTRUCT] = &InstructionSelfDestruct;
-
-        // Null out opcodes that are inlined in the dispatch loop.
-        // The dispatch loop checks for null pointers first, so non-inlined opcodes
-        // only pay a single null-check branch instead of falling through 6 if-else checks.
-        lookup[(int)Instruction.JUMPDEST] = null;
-        lookup[(int)Instruction.PUSH1] = null;
-        lookup[(int)Instruction.POP] = null;
-        lookup[(int)Instruction.DUP1] = null;
-        lookup[(int)Instruction.SWAP1] = null;
-        lookup[(int)Instruction.ISZERO] = null;
 
         return lookup;
     }

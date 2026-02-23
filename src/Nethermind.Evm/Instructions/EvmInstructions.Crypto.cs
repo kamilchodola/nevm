@@ -27,8 +27,7 @@ internal static partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b))
             goto StackUnderflow;
 
-        // Base gas (Sha3) is pre-deducted by the dispatch loop. Deduct dynamic word cost.
-        TGasPolicy.Consume(ref gas, GasCostOf.Sha3Word * EvmCalculations.Div32Ceiling(in b, out bool outOfGas));
+        TGasPolicy.Consume(ref gas, GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmCalculations.Div32Ceiling(in b, out bool outOfGas));
         if (outOfGas) goto OutOfGas;
 
         VmState<TGasPolicy> vmState = vm.VmState;

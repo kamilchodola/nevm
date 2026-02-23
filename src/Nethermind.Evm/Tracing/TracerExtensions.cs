@@ -46,7 +46,12 @@ public static class TracerExtensions
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static void TraceWord(this ITxTracer tracer, in Word value) => tracer.ReportStackPush(MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(in value, 1)));
+    public static void TraceWord(this ITxTracer tracer, in Word value)
+    {
+        // Stack stores native-endian; byte-swap to big-endian for tracer.
+        Word bigEndian = EvmStack.ByteSwapWord(value);
+        tracer.ReportStackPush(MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(in bigEndian, 1)));
+    }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static void TraceBytes(this ITxTracer tracer, in byte value, int length) => tracer.ReportStackPush(MemoryMarshal.CreateReadOnlySpan(in value, length));

@@ -39,7 +39,7 @@ internal static partial class EvmInstructions
         // Increment the opcode metric for TLOAD.
         Metrics.TloadOpcode++;
 
-        // Static gas is pre-deducted by the dispatch loop.
+        TGasPolicy.Consume(ref gas, GasCostOf.TLoad);
 
         // Attempt to pop the key (offset) from the stack; if unavailable, signal a stack underflow.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
@@ -92,7 +92,7 @@ internal static partial class EvmInstructions
         // Disallow storage modification during static calls.
         if (vmState.IsStatic) goto StaticCallViolation;
 
-        // Static gas is pre-deducted by the dispatch loop.
+        TGasPolicy.Consume(ref gas, GasCostOf.TStore);
 
         // Pop the key (offset) from the stack; if unavailable, signal a stack underflow.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
@@ -142,7 +142,7 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        // Static gas is pre-deducted by the dispatch loop.
+        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
 
         // Pop the memory offset; if not available, signal a stack underflow.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
@@ -188,7 +188,7 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        // Static gas is pre-deducted by the dispatch loop.
+        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
 
         // Pop the memory offset from the stack; if missing, signal a stack underflow.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
@@ -235,7 +235,7 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        // Static gas is pre-deducted by the dispatch loop.
+        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
 
         // Pop the memory offset; if missing, signal a stack underflow.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
@@ -288,8 +288,7 @@ internal static partial class EvmInstructions
         // Pop destination, source, and length values; if any are missing, signal a stack underflow.
         if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b) || !stack.PopUInt256(out UInt256 c)) goto StackUnderflow;
 
-        // Base gas (VeryLow) is pre-deducted by the dispatch loop. Deduct dynamic word cost.
-        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow * EvmCalculations.Div32Ceiling(c, out bool outOfGas));
+        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow + GasCostOf.VeryLow * EvmCalculations.Div32Ceiling(c, out bool outOfGas));
         if (outOfGas) goto OutOfGas;
 
         VmState<TGasPolicy> vmState = vm.VmState;
@@ -638,7 +637,7 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        // Static gas is pre-deducted by the dispatch loop.
+        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
 
         // Pop the offset from which to load call data.
         if (!stack.PopUInt256(out UInt256 result))

@@ -2,9 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+
+using Word = System.Runtime.Intrinsics.Vector256<byte>;
 
 namespace Nethermind.Evm.Tracing;
 
@@ -12,9 +16,20 @@ public readonly struct TraceStack
 {
     private readonly ReadOnlyMemory<byte> _stack;
 
-    public TraceStack(ReadOnlyMemory<byte> stack)
+    public TraceStack(ReadOnlyMemory<byte> nativeStack)
     {
-        _stack = stack;
+        // Stack stores native-endian UInt256 layout; convert to big-endian for all tracing consumers.
+        int len = nativeStack.Length;
+        byte[] bigEndian = new byte[len];
+        ReadOnlySpan<byte> src = nativeStack.Span;
+        for (int i = 0; i + EvmStack.WordSize <= len; i += EvmStack.WordSize)
+        {
+            Word swapped = EvmStack.ByteSwapWord(
+                Unsafe.ReadUnaligned<Word>(ref Unsafe.Add(ref MemoryMarshal.GetReference(src), i)));
+            Unsafe.WriteUnaligned(ref bigEndian[i], swapped);
+        }
+
+        _stack = bigEndian;
     }
 
     public ReadOnlyMemory<byte> this[int index]

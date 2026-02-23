@@ -47,7 +47,7 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpBitwise : struct, IOpBitwise
     {
-        // Static gas is pre-deducted by the dispatch loop.
+        TGasPolicy.Consume(ref gas, TOpBitwise.GasCost);
 
         // Pop the first operand from the stack by reference to minimize copying.
         ref byte bytesRef = ref stack.PopBytesByRef();

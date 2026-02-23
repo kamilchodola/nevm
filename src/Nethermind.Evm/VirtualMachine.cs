@@ -98,7 +98,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     private ICodeInfoRepository _codeInfoRepository;
 
     private delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] _opcodeMethods;
-    private long[] _staticGasCosts;
     internal bool _useHotAndColdStorage;
     internal long _sloadCost;
     internal long _netMeteredSStoreCost;
@@ -908,7 +907,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             // For tracing-enabled execution, generate (if necessary) and cache the traced opcode set.
             _opcodeMethods = (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[])(spec.EvmInstructionsTraced ??= GenerateOpCodes<TTracingInst>(spec));
         }
-        _staticGasCosts = EvmInstructions.StaticGasCosts;
     }
 
     protected virtual delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] GenerateOpCodes<TTracingInst>(IReleaseSpec spec)
@@ -1255,10 +1253,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // Pin the opcode methods array to obtain a fixed pointer, avoiding repeated bounds checks.
         // If we don't use a pointer we have bounds checks (however only 256 opcodes and opcode is a byte so know always in bounds).
         var opcodeArray = _opcodeMethods;
-        long[] staticGasArray = _staticGasCosts;
         fixed (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>*
                opcodeMethods = &opcodeArray[0])
-        fixed (long* staticGas = &staticGasArray[0])
         {
             int opCodeCount = 0;
             ref Instruction code = ref MemoryMarshal.GetReference(codeSection);
@@ -1287,92 +1283,32 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 programCounter++;
                 opCodeCount++;
 
-                // Pre-deduct static gas for all opcodes in the dispatch loop.
-                // Instruction bodies only handle dynamic gas (if any).
-                TGasPolicy.Consume(ref gas, staticGas[(int)instruction]);
-
-                // Two-level dispatch: inlined opcodes have null function pointers in the table.
-                // Non-inlined opcodes (MSTORE, ADD, PUSH32, etc.) hit a single null-check branch
-                // instead of falling through 6 if-else comparisons.
+                // For the very common POP opcode, use an inlined implementation to reduce overhead.
+                if (Instruction.POP == instruction)
                 {
+                    exceptionType = EvmInstructions.InstructionPop(this, ref stack, ref gas, ref programCounter);
+                }
+                else
+                {
+                    // Retrieve the opcode function pointer corresponding to the current instruction.
                     var opcodeMethod = opcodeMethods[(int)instruction];
-                    if (opcodeMethod != null)
-                    {
-                        exceptionType = opcodeMethod(this, ref stack, ref gas, ref programCounter);
-                    }
-                    else
-                    {
-                        // Inlined opcodes for maximum throughput.
-                        if (instruction == Instruction.JUMPDEST) { }
-                        else if (instruction == Instruction.PUSH1)
-                        {
-                            // PUSH1: read immediate byte.
-                            int imm = (int)(byte)Unsafe.Add(ref code, programCounter);
-                            // Fuse PUSH1+JUMP: if next byte is JUMP, skip the stack entirely.
-                            if (!TTracingInst.IsActive &&
-                                (uint)(programCounter + 1) < (uint)codeSection.Length &&
-                                Unsafe.Add(ref code, programCounter + 1) == Instruction.JUMP)
-                            {
-                                // Consume JUMP's static gas and count it.
-                                TGasPolicy.Consume(ref gas, staticGas[(int)Instruction.JUMP]);
-                                opCodeCount++;
-                                // Validate destination and jump.
-                                if (VmState.Env.CodeInfo.ValidateJump(imm))
-                                    programCounter = imm;
-                                else
-                                    exceptionType = EvmExceptionType.InvalidJumpDestination;
-                            }
-                            else
-                            {
-                                stack.PushByte<TTracingInst>((byte)imm);
-                                programCounter++;
-                            }
-                        }
-                        else if (instruction == Instruction.POP)
-                        {
-                            // POP: just decrement stack head.
-                            if (!stack.PopLimbo())
-                                exceptionType = EvmExceptionType.StackUnderflow;
-                        }
-                        else if (instruction == Instruction.DUP1)
-                        {
-                            // DUP1: direct call bypasses function pointer indirection so JIT can inline.
-                            exceptionType = stack.Dup<TTracingInst>(1);
-                        }
-                        else if (instruction == Instruction.SWAP1)
-                        {
-                            // SWAP1: direct call bypasses function pointer indirection so JIT can inline.
-                            exceptionType = stack.Swap<TTracingInst>(2);
-                        }
-                        else if (instruction == Instruction.ISZERO)
-                        {
-                            // ISZERO: inline to avoid function pointer + generic wrapper overhead.
-                            ref byte bytesRef = ref stack.PeekBytesByRef();
-                            if (Unsafe.IsNullRef(ref bytesRef))
-                                exceptionType = EvmExceptionType.StackUnderflow;
-                            else
-                            {
-                                ref UInt256 val = ref Unsafe.As<byte, UInt256>(ref bytesRef);
-                                val = val.IsZero ? UInt256.One : default;
-                            }
-                        }
-                    }
+                    // Invoke the opcode method, which may modify the stack, gas, and program counter.
+                    exceptionType = opcodeMethod(this, ref stack, ref gas, ref programCounter);
                 }
 
-                // Combined gas + exception check: single branch for the common (no-error) case.
-                // Bitwise OR avoids short-circuit, evaluating both conditions before branching.
-                if (TGasPolicy.GetRemainingGas(in gas) < 0 | exceptionType != EvmExceptionType.None)
+                // If gas is exhausted, jump to the out-of-gas handler.
+                if (TGasPolicy.GetRemainingGas(in gas) < 0)
                 {
-                    TGasPolicy.OnAfterInstructionTrace(in gas);
-                    if (TGasPolicy.GetRemainingGas(in gas) < 0)
-                    {
-                        OpCodeCount += opCodeCount;
-                        goto OutOfGas;
-                    }
-                    break;
+                    OpCodeCount += opCodeCount;
+                    goto OutOfGas;
                 }
 
+                // Call gas policy hook after instruction execution.
                 TGasPolicy.OnAfterInstructionTrace(in gas);
+
+                // If an exception occurred, exit the loop.
+                if (exceptionType != EvmExceptionType.None)
+                    break;
 
                 // If tracing is enabled, complete the trace for the current instruction.
                 if (TTracingInst.IsActive)

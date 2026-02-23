@@ -837,7 +837,7 @@ internal static partial class EvmInstructions
         if (!spec.IsEofEnabled || codeInfo.Version == 0)
             goto BadInstruction;
 
-        // Static gas is pre-deducted by the dispatch loop.
+        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
 
         if (!stack.PopUInt256(out UInt256 offset))
             goto StackUnderflow;

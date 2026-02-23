@@ -54,7 +54,7 @@ internal static partial class EvmInstructions
         where TOpMath : struct, IOpMath2Param
         where TTracingInst : struct, IFlag
     {
-        // Static gas is pre-deducted by the dispatch loop.
+        TGasPolicy.Consume(ref gas, TOpMath.GasCost);
 
         // Pop first operand and peek at the second (top of stack) to modify in place.
         if (!stack.PopUInt256(out UInt256 a) || !stack.PeekUInt256(out UInt256 b)) goto StackUnderflow;
@@ -274,7 +274,7 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        // Base gas is pre-deducted by the dispatch loop.
+        TGasPolicy.Consume(ref gas, GasCostOf.Exp);
 
         // Pop the base value and exponent from the stack.
         if (!stack.PopUInt256(out UInt256 a) ||

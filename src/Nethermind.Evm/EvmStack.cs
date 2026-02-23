@@ -61,6 +61,7 @@ public ref struct EvmStack
     private static Word CreateWordFromUInt64(ulong value)
         => Vector256.Create(0UL, 0UL, 0UL, value).AsByte();
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void PushBytes<TTracingInst>(scoped ReadOnlySpan<byte> value)
         where TTracingInst : struct, IFlag
     {
@@ -83,6 +84,7 @@ public ref struct EvmStack
     }
 
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void PushBytes<TTracingInst>(scoped in ZeroPaddedSpan value)
         where TTracingInst : struct, IFlag
     {
@@ -148,6 +150,24 @@ public ref struct EvmStack
         head = Vector256.Create(lane0, 0UL, 0UL, 0UL).AsByte();
     }
 
+    /// <summary>
+    /// Pushes N big-endian bytes (3, 5, 6, or 7) onto the stack as native UInt256.
+    /// Uses overlapping 8-byte read — caller must ensure at least 8 readable bytes from value.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void PushSmallBytes<TTracingInst>(ref byte value, int n)
+        where TTracingInst : struct, IFlag
+    {
+        if (TTracingInst.IsActive)
+            _tracer.TraceBytes(in value, n);
+
+        ref Word head = ref PushedHead();
+        // Read 8 bytes, bswap to get MSB-first value in high bits, shift right to keep only n bytes
+        ulong lane0 = BinaryPrimitives.ReverseEndianness(
+            Unsafe.As<byte, ulong>(ref value)) >> ((8 - n) << 3);
+        head = Vector256.Create(lane0, 0UL, 0UL, 0UL).AsByte();
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public unsafe void Push8Bytes<TTracingInst>(ref byte value)
         where TTracingInst : struct, IFlag
@@ -200,6 +220,84 @@ public ref struct EvmStack
     public void PushAddress<TTracingInst>(Address address)
         where TTracingInst : struct, IFlag
         => Push20Bytes<TTracingInst>(ref MemoryMarshal.GetArrayDataReference(address.Bytes));
+
+    /// <summary>
+    /// Pushes N big-endian bytes (9 ≤ N ≤ 15) onto the stack as native UInt256.
+    /// Uses overlapping 8-byte reads for both lanes.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void Push9to15Bytes<TTracingInst>(ref byte value, int n)
+        where TTracingInst : struct, IFlag
+    {
+        if (TTracingInst.IsActive)
+            _tracer.TraceBytes(in value, n);
+
+        ref Word head = ref PushedHead();
+        // Full lower lane: last 8 bytes
+        ulong lane0 = BinaryPrimitives.ReverseEndianness(Unsafe.As<byte, ulong>(ref Unsafe.Add(ref value, n - 8)));
+        // Partial upper lane: overlapping 8-byte read from start, shift to keep top (n-8) bytes
+        ulong lane1 = BinaryPrimitives.ReverseEndianness(
+            Unsafe.As<byte, ulong>(ref value)) >> ((16 - n) << 3);
+        head = Vector256.Create(lane0, lane1, 0UL, 0UL).AsByte();
+    }
+
+    /// <summary>
+    /// Pushes N big-endian bytes (17 ≤ N ≤ 23) onto the stack as native UInt256.
+    /// Uses overlapping 8-byte reads for the partial top lane.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void Push17to23Bytes<TTracingInst>(ref byte value, int n)
+        where TTracingInst : struct, IFlag
+    {
+        if (TTracingInst.IsActive)
+            _tracer.TraceBytes(in value, n);
+
+        ref Word head = ref PushedHead();
+        ulong lane0 = BinaryPrimitives.ReverseEndianness(Unsafe.As<byte, ulong>(ref Unsafe.Add(ref value, n - 8)));
+        ulong lane1 = BinaryPrimitives.ReverseEndianness(Unsafe.As<byte, ulong>(ref Unsafe.Add(ref value, n - 16)));
+        // Overlapping 8-byte read for partial top lane, shift to keep top (n-16) bytes
+        ulong lane2 = BinaryPrimitives.ReverseEndianness(
+            Unsafe.As<byte, ulong>(ref value)) >> ((24 - n) << 3);
+        head = Vector256.Create(lane0, lane1, lane2, 0UL).AsByte();
+    }
+
+    /// <summary>
+    /// Pushes exactly 24 big-endian bytes onto the stack as native UInt256.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void Push24Bytes<TTracingInst>(ref byte value)
+        where TTracingInst : struct, IFlag
+    {
+        if (TTracingInst.IsActive)
+            _tracer.TraceBytes(in value, 24);
+
+        ref Word head = ref PushedHead();
+        ulong lane0 = BinaryPrimitives.ReverseEndianness(Unsafe.As<byte, ulong>(ref Unsafe.Add(ref value, 16)));
+        ulong lane1 = BinaryPrimitives.ReverseEndianness(Unsafe.As<byte, ulong>(ref Unsafe.Add(ref value, 8)));
+        ulong lane2 = BinaryPrimitives.ReverseEndianness(Unsafe.As<byte, ulong>(ref value));
+        head = Vector256.Create(lane0, lane1, lane2, 0UL).AsByte();
+    }
+
+    /// <summary>
+    /// Pushes N big-endian bytes (25 ≤ N ≤ 31) onto the stack as native UInt256.
+    /// Uses overlapping 8-byte reads for the partial top lane.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void Push25to31Bytes<TTracingInst>(ref byte value, int n)
+        where TTracingInst : struct, IFlag
+    {
+        if (TTracingInst.IsActive)
+            _tracer.TraceBytes(in value, n);
+
+        ref Word head = ref PushedHead();
+        ulong lane0 = BinaryPrimitives.ReverseEndianness(Unsafe.As<byte, ulong>(ref Unsafe.Add(ref value, n - 8)));
+        ulong lane1 = BinaryPrimitives.ReverseEndianness(Unsafe.As<byte, ulong>(ref Unsafe.Add(ref value, n - 16)));
+        ulong lane2 = BinaryPrimitives.ReverseEndianness(Unsafe.As<byte, ulong>(ref Unsafe.Add(ref value, n - 24)));
+        // Overlapping 8-byte read for partial top lane, shift to keep top (n-24) bytes
+        ulong lane3 = BinaryPrimitives.ReverseEndianness(
+            Unsafe.As<byte, ulong>(ref value)) >> ((32 - n) << 3);
+        head = Vector256.Create(lane0, lane1, lane2, lane3).AsByte();
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Push32Bytes<TTracingInst>(in Word value)
@@ -487,6 +585,7 @@ public ref struct EvmStack
     /// Pops 32 bytes from the stack and returns them in big-endian format.
     /// The data is byte-swapped in-place from native format since it's below the stack pointer.
     /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public Span<byte> PopWord256()
     {
         ref byte bytes = ref PopBytesByRef();
@@ -500,6 +599,7 @@ public ref struct EvmStack
     /// <summary>
     /// Pops 32 bytes from the stack and returns them in big-endian format.
     /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool PopWord256(out Span<byte> word)
     {
         if (Head-- == 0)
@@ -604,7 +704,11 @@ public ref struct EvmStack
     {
         for (int i = depth; i > 0; i--)
         {
-            _tracer.ReportStackPush(_bytes.Slice(Head * WordSize - i * WordSize, WordSize));
+            // Stack stores native-endian; byte-swap to big-endian for tracer.
+            Word bigEndian = ByteSwapWord(Unsafe.ReadUnaligned<Word>(
+                ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), (Head - i) * WordSize)));
+            _tracer.ReportStackPush(MemoryMarshal.AsBytes(
+                MemoryMarshal.CreateReadOnlySpan(in bigEndian, 1)));
         }
     }
 

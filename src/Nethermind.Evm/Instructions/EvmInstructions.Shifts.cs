@@ -57,7 +57,7 @@ internal static partial class EvmInstructions
         where TOpShift : struct, IOpShift
         where TTracingInst : struct, IFlag
     {
-        // Static gas is pre-deducted by the dispatch loop.
+        TGasPolicy.Consume(ref gas, TOpShift.GasCost);
 
         // Pop the shift amount from the stack.
         if (!stack.PopUInt256(out UInt256 a)) goto StackUnderflow;
@@ -103,7 +103,7 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        // Static gas is pre-deducted by the dispatch loop.
+        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
 
         // Pop the shift amount, peek at the value to be shifted.
         if (!stack.PopUInt256(out UInt256 a) || !stack.PeekUInt256(out UInt256 b)) goto StackUnderflow;

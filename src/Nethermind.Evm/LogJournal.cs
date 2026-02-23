@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -14,21 +15,17 @@ namespace Nethermind.Evm;
 /// <summary>
 /// Stores log entries compactly during EVM execution, deferring all heap allocations
 /// (Hash256, Hash256[], LogEntry, byte[]) to <see cref="ToArray"/> which runs after execution completes.
-/// During execution, topics are stored inline as <see cref="ValueHash256"/> and data bytes
-/// are appended to a reusable flat buffer — zero per-LOG allocations after warmup.
+/// Topics and data bytes are both appended to a reusable flat buffer (topics first, then data)
+/// — zero per-LOG allocations after warmup.
 /// </summary>
 public sealed class LogJournal : IToArrayCollection<LogEntry>, IJournal<int>
 {
     private struct Entry
     {
         public Address Address;
-        public int DataOffset;
+        public int BufferOffset;
         public int DataLength;
         public byte TopicCount;
-        public ValueHash256 Topic0;
-        public ValueHash256 Topic1;
-        public ValueHash256 Topic2;
-        public ValueHash256 Topic3;
     }
 
     private readonly List<Entry> _entries = new();
@@ -41,7 +38,9 @@ public sealed class LogJournal : IToArrayCollection<LogEntry>, IJournal<int>
         in ValueHash256 topic0 = default, in ValueHash256 topic1 = default,
         in ValueHash256 topic2 = default, in ValueHash256 topic3 = default)
     {
-        int required = _dataPosition + data.Length;
+        int topicBytes = topicCount * ValueHash256.MemorySize;
+        int totalBytes = topicBytes + data.Length;
+        int required = _dataPosition + totalBytes;
         if (required > _dataBuffer.Length)
         {
             int newSize = Math.Max(_dataBuffer.Length * 2, required);
@@ -50,21 +49,38 @@ public sealed class LogJournal : IToArrayCollection<LogEntry>, IJournal<int>
             _dataBuffer = newBuffer;
         }
 
-        data.CopyTo(_dataBuffer.AsSpan(_dataPosition));
+        Span<byte> dest = _dataBuffer.AsSpan(_dataPosition);
+
+        // Write topics into the flat buffer.
+        if (topicCount > 0)
+        {
+            Unsafe.WriteUnaligned(ref dest[0], topic0);
+            if (topicCount > 1)
+            {
+                Unsafe.WriteUnaligned(ref dest[32], topic1);
+                if (topicCount > 2)
+                {
+                    Unsafe.WriteUnaligned(ref dest[64], topic2);
+                    if (topicCount > 3)
+                    {
+                        Unsafe.WriteUnaligned(ref dest[96], topic3);
+                    }
+                }
+            }
+        }
+
+        // Write log data after topics.
+        data.CopyTo(dest.Slice(topicBytes));
 
         Entry entry = new()
         {
             Address = address,
-            DataOffset = _dataPosition,
+            BufferOffset = _dataPosition,
             DataLength = data.Length,
             TopicCount = (byte)topicCount,
-            Topic0 = topic0,
-            Topic1 = topic1,
-            Topic2 = topic2,
-            Topic3 = topic3,
         };
 
-        _dataPosition += data.Length;
+        _dataPosition += totalBytes;
         _entries.Add(entry);
     }
 
@@ -82,7 +98,7 @@ public sealed class LogJournal : IToArrayCollection<LogEntry>, IJournal<int>
             if (newCount > 0)
             {
                 ref Entry last = ref CollectionsMarshal.AsSpan(_entries)[newCount - 1];
-                _dataPosition = last.DataOffset + last.DataLength;
+                _dataPosition = last.BufferOffset + last.TopicCount * ValueHash256.MemorySize + last.DataLength;
             }
             else
             {
@@ -120,18 +136,27 @@ public sealed class LogJournal : IToArrayCollection<LogEntry>, IJournal<int>
 
     private LogEntry MaterializeEntry(in Entry entry)
     {
+        ReadOnlySpan<byte> buffer = _dataBuffer.AsSpan(entry.BufferOffset);
+
         Hash256[] topics = entry.TopicCount switch
         {
             0 => [],
-            1 => [new Hash256(entry.Topic0)],
-            2 => [new Hash256(entry.Topic0), new Hash256(entry.Topic1)],
-            3 => [new Hash256(entry.Topic0), new Hash256(entry.Topic1), new Hash256(entry.Topic2)],
-            4 => [new Hash256(entry.Topic0), new Hash256(entry.Topic1), new Hash256(entry.Topic2), new Hash256(entry.Topic3)],
+            1 => [new Hash256(Unsafe.ReadUnaligned<ValueHash256>(ref MemoryMarshal.GetReference(buffer)))],
+            2 => [new Hash256(Unsafe.ReadUnaligned<ValueHash256>(ref MemoryMarshal.GetReference(buffer))),
+                   new Hash256(Unsafe.ReadUnaligned<ValueHash256>(ref Unsafe.Add(ref MemoryMarshal.GetReference(buffer), 32)))],
+            3 => [new Hash256(Unsafe.ReadUnaligned<ValueHash256>(ref MemoryMarshal.GetReference(buffer))),
+                   new Hash256(Unsafe.ReadUnaligned<ValueHash256>(ref Unsafe.Add(ref MemoryMarshal.GetReference(buffer), 32))),
+                   new Hash256(Unsafe.ReadUnaligned<ValueHash256>(ref Unsafe.Add(ref MemoryMarshal.GetReference(buffer), 64)))],
+            4 => [new Hash256(Unsafe.ReadUnaligned<ValueHash256>(ref MemoryMarshal.GetReference(buffer))),
+                   new Hash256(Unsafe.ReadUnaligned<ValueHash256>(ref Unsafe.Add(ref MemoryMarshal.GetReference(buffer), 32))),
+                   new Hash256(Unsafe.ReadUnaligned<ValueHash256>(ref Unsafe.Add(ref MemoryMarshal.GetReference(buffer), 64))),
+                   new Hash256(Unsafe.ReadUnaligned<ValueHash256>(ref Unsafe.Add(ref MemoryMarshal.GetReference(buffer), 96)))],
             _ => throw new InvalidOperationException()
         };
 
+        int topicBytes = entry.TopicCount * ValueHash256.MemorySize;
         byte[] data = entry.DataLength > 0
-            ? _dataBuffer.AsSpan(entry.DataOffset, entry.DataLength).ToArray()
+            ? buffer.Slice(topicBytes, entry.DataLength).ToArray()
             : [];
 
         return new LogEntry(entry.Address, data, topics);

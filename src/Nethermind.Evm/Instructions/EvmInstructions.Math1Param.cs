@@ -56,7 +56,7 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpMath : struct, IOpMath1Param
     {
-        // Static gas is pre-deducted by the dispatch loop.
+        TGasPolicy.Consume(ref gas, TOpMath.GasCost);
 
         // Peek at the top element of the stack without removing it.
         // This avoids an unnecessary pop/push sequence.
@@ -120,7 +120,7 @@ internal static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        // Static gas is pre-deducted by the dispatch loop.
+        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
 
         // Pop the byte position and the 256-bit word.
         if (!stack.PopUInt256(out UInt256 a))
@@ -160,7 +160,7 @@ internal static partial class EvmInstructions
     public static EvmExceptionType InstructionSignExtend<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        // Static gas is pre-deducted by the dispatch loop.
+        TGasPolicy.Consume(ref gas, GasCostOf.Low);
 
         // Pop the index to determine which byte to use for sign extension.
         if (!stack.PopUInt256(out UInt256 a))
